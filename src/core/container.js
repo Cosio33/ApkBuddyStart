@@ -151,9 +151,9 @@ function nextSessionState(active, event, pkg) {
 /** 给日志/诊断用的一行摘要 */
 function describeSession(state, plan) {
   const n = state.active.length;
-  if (!n) return '容器空闲（Android 常驻但已降优先级，0 个应用进程）';
-  return `容器活跃：${n} 个应用窗口${plan && plan.stopped && plan.stopped.length
-    ? `，已停掉 ${plan.stopped.length} 个后台应用` : ''}`;
+  if (!n) return 'Contenedor inactivo (Android residente pero con prioridad reducida, 0 procesos de aplicación)';
+  return `Contenedor activo:${n} ventanas de aplicaciones${plan && plan.stopped && plan.stopped.length
+    ? `, se detuvo ${plan.stopped.length} aplicaciones en segundo plano` : ''}`;
 }
 
 /**

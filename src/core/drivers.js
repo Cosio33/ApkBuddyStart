@@ -53,13 +53,13 @@ const FLAG_ONLY = new Set([
  * 单独列出来是为了在报错时说清楚「为什么不行」，而不是只说「不在白名单里」。
  */
 const FORBIDDEN_ARGS = {
-  '-wipe-data': '会清空用户已装应用与存档',
-  '-datadir': '会改 AVD 落点，破坏多实例隔离',
-  '-sysdir': '会改系统镜像来源',
-  '-partition-size': '会改数据分区大小，请走设置页',
-  '-avd': 'AVD 名由 ApkStart 管理',
-  '-port': '端口由 ApkStart 动态分配',
-  '-http-proxy': '代理请走系统设置',
+  '-wipe-data': 'Borrará las aplicaciones y datos del usuario',
+  '-datadir': 'Cambia la ubicación del AVD y rompe el aislamiento de múltiples instancias',
+  '-sysdir': 'Cambia la fuente de la imagen del sistema',
+  '-partition-size': 'Cambia el tamaño de la partición de datos; usa la página de ajustes',
+  '-avd': 'El nombre del AVD lo gestiona ApkStart',
+  '-port': 'ApkStart asigna el puerto dinámicamente',
+  '-http-proxy': 'El proxy se configura en los ajustes del sistema',
 };
 
 /** 驱动能改的 config.ini 键 */
@@ -155,11 +155,11 @@ function inRange(value, range) {
 function validateMatch(match, errors) {
   if (match === undefined) return {};
   if (!isObj(match)) {
-    errors.push('match 必须是对象');
+    errors.push('match debe ser un objeto');
     return {};
   }
   for (const k of Object.keys(match)) {
-    if (!MATCH_KEYS.has(k)) errors.push(`match.${k} 不是支持的匹配条件`);
+    if (!MATCH_KEYS.has(k)) errors.push(`match.${k} no es una condición de coincidencia compatible`);
   }
   const out = {};
   if (match.any !== undefined) out.any = !!match.any;
@@ -169,19 +169,19 @@ function validateMatch(match, errors) {
   if (match.cpuVendor !== undefined) out.cpuVendor = asArray(match.cpuVendor).map((v) => String(v).toLowerCase());
   if (match.accel !== undefined) out.accel = asArray(match.accel).map((v) => String(v).toLowerCase());
   if (match.gpuName !== undefined) {
-    if (!safeRegex(match.gpuName)) errors.push('match.gpuName 不是合法正则（且长度需 ≤200）');
+    if (!safeRegex(match.gpuName)) errors.push('match.gpuName no es una expresión regular válida (y su longitud debe ser ≤200)');
     else out.gpuName = String(match.gpuName);
   }
   for (const k of ['osBuild', 'totalMB', 'cores', 'emulatorVersion']) {
     if (match[k] === undefined) continue;
     if (!isObj(match[k]) && typeof match[k] !== 'number' && typeof match[k] !== 'string') {
-      errors.push(`match.${k} 必须是数字或 {min,max}`);
+      errors.push(`match.${k} debe ser un número o {min,max}`);
       continue;
     }
     if (isObj(match[k])) {
       const bad = ['min', 'max'].filter((x) => match[k][x] !== undefined && !Number.isFinite(Number(match[k][x])));
       if (bad.length) {
-        errors.push(`match.${k}.${bad.join('/')} 必须是数字`);
+        errors.push(`match.${k}.${bad.join('/')} debe ser un número`);
         continue;
       }
       out[k] = { min: match[k].min, max: match[k].max };
@@ -196,7 +196,7 @@ function validateArgs(args, errors) {
   const out = [];
   if (args === undefined) return out;
   if (!Array.isArray(args)) {
-    errors.push('effect.emulatorArgs 必须是字符串数组');
+    errors.push('effect.emulatorArgs debe ser un array de cadenas');
     return out;
   }
   for (const raw of args) {
@@ -206,21 +206,21 @@ function validateArgs(args, errors) {
     const flag = eq > 0 ? s.slice(0, eq) : s;
     const value = eq > 0 ? s.slice(eq + 1) : '';
     if (FORBIDDEN_ARGS[flag]) {
-      errors.push(`emulatorArgs 不允许 ${flag}：${FORBIDDEN_ARGS[flag]}`);
+      errors.push(`emulatorArgs no permite ${flag}：${FORBIDDEN_ARGS[flag]}`);
       continue;
     }
     if (eq < 0) {
-      if (!FLAG_ONLY.has(flag)) errors.push(`emulatorArgs 不支持单独的参数 ${flag}（带值的请写成 ${flag}=值）`);
+      if (!FLAG_ONLY.has(flag)) errors.push(`emulatorArgs no admite el parámetro individual ${flag}(Los que llevan valor, escríbalos como ${flag}=valor)`);
       else out.push({ flag, value: '' });
       continue;
     }
     const rule = ARG_RULES[flag];
     if (!rule) {
-      errors.push(`emulatorArgs 不支持 ${flag}`);
+      errors.push(`emulatorArgs no admite ${flag}`);
       continue;
     }
     if (!rule.test(value)) {
-      errors.push(`emulatorArgs 的 ${flag} 取值不合法：${value}`);
+      errors.push(`de emulatorArgs ${flag} valor no válido:${value}`);
       continue;
     }
     out.push({ flag, value });
@@ -232,18 +232,18 @@ function validateIni(ini, errors) {
   const out = {};
   if (ini === undefined) return out;
   if (!isObj(ini)) {
-    errors.push('effect.configIni 必须是对象');
+    errors.push('effect.configIni debe ser un objeto');
     return out;
   }
   for (const [k, v] of Object.entries(ini)) {
     const rule = INI_RULES[k];
     if (!rule) {
-      errors.push(`configIni 不支持 ${k}（会破坏数据分区 / 落点的键一律拒绝）`);
+      errors.push(`configIni no admite ${k}(Las claves que puedan dañar la partición de datos / los puntos de montaje se rechazan siempre)`);
       continue;
     }
     const s = String(v);
     if (!rule.test(s)) {
-      errors.push(`configIni 的 ${k} 取值不合法：${s}`);
+      errors.push(`configIni: ${k} valor no válido:${s}`);
       continue;
     }
     out[k] = s;
@@ -255,17 +255,17 @@ function validateEnv(env, errors) {
   const out = {};
   if (env === undefined) return out;
   if (!isObj(env)) {
-    errors.push('effect.env 必须是对象');
+    errors.push('effect.env debe ser un objeto');
     return out;
   }
   for (const [k, v] of Object.entries(env)) {
     if (!ENV_NAME_RULES.some((re) => re.test(k))) {
-      errors.push(`env 不允许设置 ${k}（只放行 ANDROID_/QEMU_/LIBGL_/MESA_/EMUGL_ 前缀）`);
+      errors.push(`env no permite establecer ${k}(Solo se permiten los prefijos ANDROID_/QEMU_/LIBGL_/MESA_/EMUGL_)`);
       continue;
     }
     const s = String(v);
     if (s.length > 200 || /[\r\n\0]/.test(s)) {
-      errors.push(`env.${k} 的取值不合法（长度 ≤200，且不能含换行）`);
+      errors.push(`env.${k} no es un valor válido (longitud ≤200 y no puede contener saltos de línea)`);
       continue;
     }
     out[k] = s;
@@ -283,50 +283,50 @@ function validateEnv(env, errors) {
 function validateDriver(raw, { file = '' } = {}) {
   const errors = [];
   const where = file ? `${file}: ` : '';
-  if (!isObj(raw)) return { ok: false, errors: [`${where}驱动必须是 JSON 对象`], driver: null };
+  if (!isObj(raw)) return { ok: false, errors: [`${where}El controlador debe ser un objeto JSON`], driver: null };
 
   if (raw.format !== DRIVER_FORMAT) {
-    errors.push(`${where}format 必须是 "${DRIVER_FORMAT}"（当前 ${JSON.stringify(raw.format)}）`);
+    errors.push(`${where}format debe ser "${DRIVER_FORMAT}" (actual ${JSON.stringify(raw.format)}）`);
   }
   const id = String(raw.id || '').trim();
   if (!/^[a-z0-9][a-z0-9._-]{2,63}$/i.test(id)) {
-    errors.push(`${where}id 必须由字母数字和 . _ - 组成，3~64 个字符（例如 amd-igpu-swangle）`);
+    errors.push(`${where}El id debe estar formado por letras, números y . _ -, entre 3 y 64 caracteres (p. ej., amd-igpu-swangle)`);
   }
   const name = String(raw.name || '').trim();
-  if (!name || name.length > 80) errors.push(`${where}name 必填，且不超过 80 字`);
+  if (!name || name.length > 80) errors.push(`${where}name es obligatorio y no supera los 80 caracteres`);
   const version = String(raw.version || '').trim();
-  if (!/^\d+(\.\d+){0,3}(-[A-Za-z0-9.]+)?$/.test(version)) errors.push(`${where}version 必须形如 1.0.0`);
+  if (!/^\d+(\.\d+){0,3}(-[A-Za-z0-9.]+)?$/.test(version)) errors.push(`${where}version debe tener el formato 1.0.0`);
   if (raw.priority !== undefined && (!Number.isFinite(Number(raw.priority)) || Math.abs(Number(raw.priority)) > 100)) {
-    errors.push(`${where}priority 必须是 -100 ~ 100 的数字`);
+    errors.push(`${where}priority debe ser un número entre -100 y 100`);
   }
 
   const match = validateMatch(raw.match, errors);
   if (raw.match !== undefined && isObj(raw.match) && Object.keys(raw.match).length === 0) {
-    errors.push(`${where}match 不能是空对象；如果要匹配所有机器请写 {"any": true}`);
+    errors.push(`${where}match no puede ser un objeto vacío; si quieres coincidir con todas las máquinas, escribe {"any": true}`);
   }
   const effectRaw = isObj(raw.effect) ? raw.effect : null;
-  if (!effectRaw) errors.push(`${where}effect 必须是对象`);
+  if (!effectRaw) errors.push(`${where}effect debe ser un objeto`);
   let effect = {
     gpuMode: '', forceTcg: null, args: [], ini: {}, env: {}, notes: [],
   };
   if (effectRaw) {
     for (const k of Object.keys(effectRaw)) {
-      if (!EFFECT_KEYS.has(k)) errors.push(`${where}effect.${k} 不是支持的字段`);
+      if (!EFFECT_KEYS.has(k)) errors.push(`${where}effect.${k} no es un campo compatible`);
     }
     if (effectRaw.gpuMode !== undefined) {
       const v = String(effectRaw.gpuMode);
-      if (!ARG_RULES['-gpu'].test(v)) errors.push(`${where}effect.gpuMode 取值不合法：${v}`);
+      if (!ARG_RULES['-gpu'].test(v)) errors.push(`${where}effect.gpuMode tiene un valor no válido:${v}`);
       else effect.gpuMode = v;
     }
     if (effectRaw.forceTcg !== undefined) {
-      if (typeof effectRaw.forceTcg !== 'boolean') errors.push(`${where}effect.forceTcg 必须是 true/false`);
+      if (typeof effectRaw.forceTcg !== 'boolean') errors.push(`${where}effect.forceTcg debe ser true/false`);
       else effect.forceTcg = effectRaw.forceTcg;
     }
     effect.args = validateArgs(effectRaw.emulatorArgs, errors);
     effect.ini = validateIni(effectRaw.configIni, errors);
     effect.env = validateEnv(effectRaw.env, errors);
     if (effectRaw.notes !== undefined) {
-      if (!Array.isArray(effectRaw.notes)) errors.push(`${where}effect.notes 必须是字符串数组`);
+      if (!Array.isArray(effectRaw.notes)) errors.push(`${where}effect.notes debe ser una matriz de cadenas`);
       else {
         effect.notes = effectRaw.notes
           .map((n) => String(n).trim())
@@ -529,12 +529,12 @@ function loadDir(dir) {
     try {
       const st = fs.statSync(file);
       if (st.size > MAX_DRIVER_BYTES) {
-        out.errors.push({ file, errors: [`文件过大（${st.size} 字节，上限 ${MAX_DRIVER_BYTES}）`] });
+        out.errors.push({ file, errors: [`El archivo es demasiado grande (${st.size} bytes, límite ${MAX_DRIVER_BYTES}）`] });
         continue;
       }
       raw = JSON.parse(fs.readFileSync(file, 'utf8'));
     } catch (e) {
-      out.errors.push({ file, errors: [`读不出来：${e.message}`] });
+      out.errors.push({ file, errors: [`No se puede leer:${e.message}`] });
       continue;
     }
     const r = validateDriver(raw, { file });
@@ -569,10 +569,10 @@ function importDriver(srcFile, destDir) {
   let raw;
   try {
     const st = fs.statSync(srcFile);
-    if (st.size > MAX_DRIVER_BYTES) return { ok: false, errors: ['文件过大，驱动最多 256 KB'] };
+    if (st.size > MAX_DRIVER_BYTES) return { ok: false, errors: ['El archivo es demasiado grande; el controlador admite un máximo de 256 KB'] };
     raw = JSON.parse(fs.readFileSync(srcFile, 'utf8'));
   } catch (e) {
-    return { ok: false, errors: [`读不出来：${e.message}`] };
+    return { ok: false, errors: [`No se puede leer:${e.message}`] };
   }
   const r = validateDriver(raw, { file: path.basename(srcFile) });
   if (!r.ok) return { ok: false, errors: r.errors };
@@ -582,7 +582,7 @@ function importDriver(srcFile, destDir) {
     fs.writeFileSync(dest, `${JSON.stringify(raw, null, 2)}\n`, 'utf8');
     return { ok: true, file: dest, driver: r.driver };
   } catch (e) {
-    return { ok: false, errors: [`写入失败：${e.message}`] };
+    return { ok: false, errors: [`Error al escribir:${e.message}`] };
   }
 }
 
@@ -590,15 +590,15 @@ function importDriver(srcFile, destDir) {
  * 导出一份「本机模板」：把当前机器的画像填进 match，
  * 用户只要改 effect 就能做出「只对我这台机器生效」的驱动。
  */
-function templateFromHost(host = {}, { name = '我的机器' } = {}) {
+function templateFromHost(host = {}, { name = 'Mi máquina' } = {}) {
   const gpu = host.gpuVendor && host.gpuVendor !== 'unknown' ? host.gpuVendor : 'unknown';
   return {
     format: DRIVER_FORMAT,
     id: `my-${gpu}-${toInt(host.osBuild) || 'custom'}`.toLowerCase().replace(/[^a-z0-9._-]/g, '-'),
-    name: `${name} 兼容补丁`,
+    name: `${name} parche de compatibilidad`,
     version: '1.0.0',
     author: '',
-    description: '由 ApkStart「导出本机模板」生成：match 已经按这台机器填好，按需修改 effect 即可。',
+    description: 'Generado por «Exportar plantilla local» de ApkStart: los criterios match ya están rellenados para este equipo; modifica solo effect.',
     priority: 0,
     match: {
       platform: host.platform || process.platform,
@@ -612,7 +612,7 @@ function templateFromHost(host = {}, { name = '我的机器' } = {}) {
       emulatorArgs: [],
       configIni: {},
       env: {},
-      notes: ['示例：把 gpuMode 改成 host / software 或打开 forceTcg 试试'],
+      notes: ['Ejemplo: cambia gpuMode a host / software o activa forceTcg'],
     },
   };
 }

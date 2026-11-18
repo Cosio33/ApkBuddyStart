@@ -1,6 +1,6 @@
-appId: com.apkstart.win
-productName: ApkStart
-copyright: Copyright © 2026 ApkStart
+appId: com.apkbuddystart.win
+productName: ApkBuddyStart
+copyright: Copyright © 2026 Cosio33 (basado en RoutineMiku, MIT)
 
 directories:
   output: dist/release
@@ -56,14 +56,14 @@ win:
 # 换产品身份时改这里（或设 APKSTART_MSIX_IDENTITY / APKSTART_MSIX_PUBLISHER）。
 # 注意：占位 Publisher（CN=RoutineMiku）打出来的包商店会直接拒收。
 appx:
-  identityName: RoutineMiku.ApkStart
+  identityName: Cosio33.ApkBuddyStart
   publisher: "CN=58CA1DED-8AB3-4D0D-AF50-62C9B781AA4D"
-  publisherDisplayName: RoutineMiku
-  displayName: ApkStart
-  applicationId: ApkStart
+  publisherDisplayName: Cosio33
+  displayName: ApkBuddyStart
+  applicationId: ApkBuddyStart
   # 全信任桌面应用唯一必需的能力。不要加 unvirtualizedResources /
   # broadFileSystemAccess —— Store 基本不批，而且本应用靠「数据目录挪到
-  # %USERPROFILE%\ApkStart」绕开了 AppData 写重定向，不需要它们。
+  # %USERPROFILE%\ApkBuddyStart」绕开了 AppData 写重定向，不需要它们。
   capabilities:
     - runFullTrust
   languages:
@@ -85,7 +85,7 @@ nsis:
   # 或者图标还指着旧 exe。always 保证每次安装后都指向当前安装目录。
   createDesktopShortcut: always
   createStartMenuShortcut: true
-  artifactName: ApkStart-${version}-Setup.exe
+  artifactName: ApkBuddyStart-${version}-Setup.exe
   # 卸载前先结束仍在运行的运行时进程，避免文件被锁导致无法删除
   # （火绒等粉碎工具删不掉，多半是 qemu/adb 进程还驻留）。
   include: build/installer.nsh
@@ -110,6 +110,6 @@ linux:
   icon: src/ui/assets/logo-128.png
   desktop:
     entry:
-      Name: ApkStart
+      Name: ApkBuddyStart
       Comment: 在 FydeOS / Linux 上管理安卓应用
       Categories: Utility;

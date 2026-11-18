@@ -160,7 +160,7 @@ function embedExeMeta(exe) {
     // 四段式文件版本（和 MSIX 的口径一致），产品版本用三段式
     '--set-file-version', `${PKG.version}.0`,
     '--set-product-version', PKG.version,
-    '--set-version-string', 'ProductName', 'ApkStart',
+    '--set-version-string', 'ProductName', 'ApkBuddyStart',
     '--set-version-string', 'FileDescription', 'ApkStart 安卓应用运行器',
     '--set-version-string', 'CompanyName', PKG.author || 'RoutineMiku',
     '--set-version-string', 'LegalCopyright', 'Copyright (c) 2026 ApkStart',

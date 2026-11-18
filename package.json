@@ -1,19 +1,19 @@
 {
-  "name": "apkstart",
-  "productName": "ApkStart",
+  "name": "apkbuddystart",
+  "productName": "ApkBuddyStart",
   "version": "0.5.8",
-  "description": "极致轻量的 Windows 安卓应用运行器：双击 APK 即装，应用以独立窗口与桌面图标运行",
+  "description": "Ejecutor ligero de aplicaciones Android para Windows: instala APK con doble clic y ejecuta cada app en su propia ventana",
   "main": "src/main.js",
-  "author": "RoutineMiku",
+  "author": "Cosio33 (basado en RoutineMiku/apkstart, MIT)",
   "license": "MIT",
   "private": true,
-  "homepage": "https://github.com/RoutineMiku/apkstart#readme",
+  "homepage": "https://github.com/Cosio33/ApkBuddyStart#readme",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/RoutineMiku/apkstart.git"
+    "url": "git+https://github.com/Cosio33/ApkBuddyStart.git"
   },
   "bugs": {
-    "url": "https://github.com/RoutineMiku/apkstart/issues"
+    "url": "https://github.com/Cosio33/ApkBuddyStart/issues"
   },
   "keywords": [
     "android",

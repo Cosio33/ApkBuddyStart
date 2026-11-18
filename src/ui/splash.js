@@ -20,13 +20,13 @@ Promise.all([
   // 用户抱怨的就是「装了 850MB 还在下镜像」，实际那只是把包里的压缩镜像
   // 展开到用户目录，不需要联网。
   if (bundled) {
-    if ($('firstRunTitle')) $('firstRunTitle').textContent = '首次启动 · 本地准备中（无需联网）';
+    if ($('firstRunTitle')) $('firstRunTitle').textContent = 'Primer arranque · preparación local (sin conexión)';
     if ($('firstRunList')) {
       $('firstRunList').innerHTML = [
-        '<li>运行时组件已随安装包内置，不再下载任何东西</li>',
-        '<li>把系统镜像展开到用户目录（约 1 分钟，只需一次）</li>',
-        '<li>准备硬件加速与中文输入法</li>',
-        '<li>完成后双击 APK 或桌面图标即可秒开应用</li>',
+        '<li>Los componentes del entorno ya vienen en el instalador; no se descarga nada</li>',
+        '<li>Extraer la imagen del sistema al directorio de usuario (unos 1 minuto, solo una vez)</li>',
+        '<li>Preparar aceleración hardware y teclado chino</li>',
+        '<li>Después, haz doble clic en un APK o en el icono del escritorio para abrir aplicaciones al instante</li>',
       ].join('');
     }
   }

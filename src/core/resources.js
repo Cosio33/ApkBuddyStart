@@ -77,11 +77,11 @@ function clampMemoryMB(mb, totalMB) {
     return {
       mb: lim.maxMB,
       capped: true,
-      reason: `宿主内存 ${Math.round(lim.totalMB / 1024)} GB，最多只能分 ${Math.round(lim.maxMB / 1024)} GB（要留 25% 给 Windows）`,
+      reason: `Memoria del host ${Math.round(lim.totalMB / 1024)} GB, como máximo se puede dividir en ${Math.round(lim.maxMB / 1024)} GB (hay que dejar un 25 % para Windows)`,
     };
   }
-  if (rounded < lim.minMB) return { mb: lim.minMB, capped: true, reason: `安卓至少要 ${lim.minMB} MB 才能启动` };
-  return { mb: rounded, capped: rounded !== want, reason: rounded !== want ? '已按 512 MB 对齐' : '' };
+  if (rounded < lim.minMB) return { mb: lim.minMB, capped: true, reason: `Android requiere al menos ${lim.minMB} MB para poder iniciar` };
+  return { mb: rounded, capped: rounded !== want, reason: rounded !== want ? 'Alineado a 512 MB' : '' };
 }
 
 /**
@@ -94,7 +94,7 @@ function clampCores(n, hostCores) {
   const max = total > 1 ? total - 1 : 1;
   if (want <= 0) return { cores: 0, capped: false, reason: 'auto' };
   if (want > max) {
-    return { cores: max, capped: true, reason: `本机 ${total} 核，最多分 ${max} 核（留 1 核给 Windows）` };
+    return { cores: max, capped: true, reason: `Local ${total} núcleos, máximo ${max} núcleos (deja 1 núcleo para Windows)` };
   }
   return { cores: Math.max(1, want), capped: false, reason: '' };
 }
@@ -108,18 +108,18 @@ function memVerdict(allocMB, hostMB) {
   const host = toInt(hostMB);
   if (!alloc || !host) return { level: 'unknown', ratio: 0, note: '' };
   if (alloc < ABSOLUTE_MIN_MB) {
-    return { level: 'insufficient', ratio: alloc / host, note: `只分 ${alloc} MB，安卓可能起不来` };
+    return { level: 'insufficient', ratio: alloc / host, note: `Solo asignar ${alloc} MB, es posible que Android no arranque` };
   }
   const ratio = alloc / host;
   if (ratio > 1 - HOST_RESERVE_RATIO) {
     return {
       level: 'insufficient',
       ratio,
-      note: `占了宿主 ${Math.round(ratio * 100)}% 内存，Windows 会开始换页，模拟器反而更卡`,
+      note: `ocupa en el host ${Math.round(ratio * 100)} % de memoria, Windows empezará a paginar y el emulador irá más lento`,
     };
   }
   if (ratio > TIGHT_RATIO * (1 - HOST_RESERVE_RATIO)) {
-    return { level: 'tight', ratio, note: `已用 ${Math.round(ratio * 100)}% 宿主内存，建议同时关掉浏览器标签页` };
+    return { level: 'tight', ratio, note: `Usado ${Math.round(ratio * 100)}% de la memoria del host; se recomienda cerrar también las pestañas del navegador` };
   }
   return { level: 'ok', ratio, note: '' };
 }
@@ -155,7 +155,7 @@ function clampDataGB(gb, freeMB) {
     return {
       gb: Math.max(0, lim.maxGB),
       capped: true,
-      reason: `所在磁盘只剩 ${(lim.freeMB / 1024).toFixed(1)} GB，最多能分 ${lim.maxGB} GB`,
+      reason: `el disco donde se encuentra solo queda ${(lim.freeMB / 1024).toFixed(1)} GB, como máximo se puede dividir en ${lim.maxGB} GB`,
     };
   }
   return { gb: want, capped: false, reason: '' };
@@ -168,7 +168,7 @@ function clampDataGB(gb, freeMB) {
 function storageVerdict(freeMB, packageBytes) {
   const need = diskRequiredMB(packageBytes);
   const free = Math.max(0, toInt(freeMB));
-  if (!free) return { ok: true, needMB: need, freeMB: 0, shortMB: 0, note: '读不到磁盘剩余空间，跳过预检' };
+  if (!free) return { ok: true, needMB: need, freeMB: 0, shortMB: 0, note: 'No se puede leer el espacio libre en disco; se omite la comprobación previa' };
   if (free >= need) return { ok: true, needMB: need, freeMB: free, shortMB: 0, note: '' };
   const short = need - free;
   return {
@@ -176,7 +176,7 @@ function storageVerdict(freeMB, packageBytes) {
     needMB: need,
     freeMB: free,
     shortMB: short,
-    note: `需要约 ${(need / 1024).toFixed(1)} GB，当前只剩 ${(free / 1024).toFixed(1)} GB，还差 ${(short / 1024).toFixed(1)} GB`,
+    note: `Requiere aproximadamente ${(need / 1024).toFixed(1)} GB, actualmente solo quedan ${(free / 1024).toFixed(1)} GB, aún faltan ${(short / 1024).toFixed(1)} GB`,
   };
 }
 
@@ -194,8 +194,8 @@ function diskVerdict(freeMB, requiredMB) {
     ok: false,
     freeMB: free,
     requiredMB: need,
-    message: `磁盘空间不足：还要约 ${Math.ceil(need / 1024)} GB，但 ApkStart 运行时所在磁盘只剩 ${(free / 1024).toFixed(1)} GB。`
-      + '请在设置里把运行时目录挪到空间更大的分区，或清理后重试。',
+    message: `Espacio en disco insuficiente: se necesitan unos ${Math.ceil(need / 1024)} GB, pero en el disco donde se encuentra el entorno de ejecución de ApkStart solo quedan ${(free / 1024).toFixed(1)} GB。`
+      + 'En Ajustes, mueve la carpeta del entorno de ejecución a una partición con más espacio, o libera espacio y vuelve a intentarlo.',
   };
 }
 
