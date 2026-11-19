@@ -6,7 +6,7 @@ directories:
   output: dist/release
   buildResources: build
 
-# 只带运行需要的文件，源码目录整块进包（无 asar：窗口代理要用真实的 .ps1 路径）
+# Solo se incluyen los archivos necesarios para ejecutar; el directorio de código fuente entra completo (sin asar: el agente de ventana necesita la ruta real del .ps1)
 asar: false
 files:
   - src/**/*
@@ -14,21 +14,21 @@ files:
   - LICENSE
   - "!**/*.map"
   - "!**/node_modules/**"
-  # 运行时解压 .xz 镜像用（NAPI 预编译，无 ABI 问题）
+  # Para descomprimir imágenes .xz en tiempo de ejecución (NAPI preconstruido, sin problemas de ABI)
   - "node_modules/@napi-rs/lzma/**"
   - "node_modules/@napi-rs/lzma-win32-x64-msvc/**"
   - "!node_modules/@napi-rs/lzma/*.md"
   - "!node_modules/@napi-rs/lzma/*.ts"
   - "!node_modules/@napi-rs/lzma/browser-entry.*"
 
-# 只保留中英文界面语言（Electron locales 从 41MB 降到 ~3MB）
+# Conservar solo los idiomas de interfaz chino e inglés (los locales de Electron pasan de 41 MB a ~3 MB)
 electronLanguages:
   - zh-CN
   - zh-TW
   - en-US
 
-# 完整运行时（emulator + platform-tools + 系统镜像），由 build/prepare-runtime.js 生成。
-# 打进包里之后首次启动不再需要任何下载。
+# Runtime completo (emulator + platform-tools + imagen del sistema), generado por build/prepare-runtime.js.
+# Al incluirlo en el paquete, el primer arranque no requiere ninguna descarga.
 extraResources:
   - from: build/runtime
     to: runtime
@@ -42,28 +42,31 @@ win:
       arch:
         - x64
   icon: src/ui/assets/appicon.ico
-  # 安装到当前用户目录，不写系统盘、不要求管理员权限
+  # Instalar en el directorio del usuario actual, sin escribir en la unidad del sistema ni pedir permisos de administrador
   requestedExecutionLevel: asInvoker
 
-# ---------------- 微软商店（MSIX） ----------------
-# appx 目标不在默认构建列表里：它只有出商店包时才用（npm run build:appx），
-# 平时 npm run build:exe 仍然只出 NSIS 安装包。
+# ---------------- Microsoft Store (MSIX) ----------------
+# El objetivo appx no está en la lista de compilación predeterminada: solo se usa al generar el
+# paquete de la tienda (npm run build:appx); normalmente npm run build:exe solo produce el
+# instalador NSIS.
 #
-# identityName / publisher 必须逐字等于 Partner Center →
-#   Product management → Product identity 里的
-#   Package/Identity/Name 与 Package/Identity/Publisher。
-# 下面这两个值是 2026-11-16 从 Partner Center 抄下来的确认值；
-# 换产品身份时改这里（或设 APKSTART_MSIX_IDENTITY / APKSTART_MSIX_PUBLISHER）。
-# 注意：占位 Publisher（CN=RoutineMiku）打出来的包商店会直接拒收。
+# identityName / publisher deben coincidir literalmente con
+#   Partner Center → Product management → Product identity →
+#   Package/Identity/Name y Package/Identity/Publisher.
+# Los dos valores siguientes son los confirmados, copiados de Partner Center el 2026-11-16;
+# al cambiar la identidad del producto, modifícalos aquí (o define APKSTART_MSIX_IDENTITY /
+# APKSTART_MSIX_PUBLISHER).
+# Atención: la tienda rechazará directamente los paquetes con el Publisher de marcador de posición (CN=RoutineMiku).
 appx:
   identityName: Cosio33.ApkBuddyStart
   publisher: "CN=58CA1DED-8AB3-4D0D-AF50-62C9B781AA4D"
   publisherDisplayName: Cosio33
   displayName: ApkBuddyStart
   applicationId: ApkBuddyStart
-  # 全信任桌面应用唯一必需的能力。不要加 unvirtualizedResources /
-  # broadFileSystemAccess —— Store 基本不批，而且本应用靠「数据目录挪到
-  # %USERPROFILE%\ApkBuddyStart」绕开了 AppData 写重定向，不需要它们。
+  # La única capacidad obligatoria para una aplicación de escritorio de plena confianza. No añadir
+  # unvirtualizedResources / broadFileSystemAccess: la tienda prácticamente nunca las aprueba, y
+  # esta aplicación ya evita la redirección de escritura de AppData moviendo el directorio de datos
+  # a %USERPROFILE%\ApkBuddyStart, así que no las necesita.
   capabilities:
     - runFullTrust
   languages:
@@ -73,36 +76,45 @@ appx:
   maxVersionTested: 10.0.22621.0
 
 nsis:
-  # 不再是「一键装到 C 盘默认目录」：改为标准向导，允许用户选择安装位置
-  # （装到非系统盘可减轻 C 盘压力；运行时数据目录另在设置里单独指定）。
+  # Ya no es la «instalación de un clic en el directorio predeterminado de C:»: ahora se usa un
+  # asistente estándar que permite elegir la ubicación de instalación (instalar en una unidad que
+  # no sea del sistema alivia la carga de C:; el directorio de datos del runtime se especifica por
+  # separado en los ajustes).
   oneClick: false
   perMachine: false
   allowToChangeInstallationDirectory: true
   displayLanguageSelector: false
-  # always：即使桌面上已有同名 .lnk 也重建一次。
-  # 默认的 true 只在「不存在」时才创建，某些机器上（安全软件拦截、桌面被
-  # OneDrive 重定向、旧版残留了指向已删目录的坏快捷方式）会出现装完没图标，
-  # 或者图标还指着旧 exe。always 保证每次安装后都指向当前安装目录。
+  # always: reconstruir el acceso directo incluso si ya existe un .lnk con el mismo nombre en el
+  # escritorio. El valor predeterminado true solo lo crea cuando «no existe», lo que en algunas
+  # máquinas (bloqueo por software de seguridad, escritorio redirigido a OneDrive, restos de una
+  # versión anterior con accesos directos rotos que apuntan a un directorio borrado) hace que no
+  # aparezca el icono tras instalar o que el icono siga apuntando al exe antiguo. always garantiza
+  # que cada instalación apunte al directorio de instalación actual.
   createDesktopShortcut: always
   createStartMenuShortcut: true
   artifactName: ApkBuddyStart-${version}-Setup.exe
-  # 卸载前先结束仍在运行的运行时进程，避免文件被锁导致无法删除
-  # （火绒等粉碎工具删不掉，多半是 qemu/adb 进程还驻留）。
+  # Antes de desinstalar, terminar los procesos del runtime que sigan en ejecución para evitar que
+  # los archivos queden bloqueados y no se puedan borrar (si tools como Huorong no pueden eliminarlos,
+  # lo más probable es que los procesos qemu/adb sigan residentes).
   include: build/installer.nsh
-  # 安装包本身已含完整运行时（emulator + 系统镜像 .gz），装完首次启动
-  # 自动把镜像展开到用户目录，之后不再联网下载任何东西。
+  # El propio instalador ya incluye el runtime completo (emulator + imagen del sistema .gz);
+  # tras instalar, el primer arranque extrae automáticamente la imagen al directorio del usuario y
+  # a partir de entonces no se descarga nada de la red.
 
-# 压缩级别：normal（zlib）。镜像本身已是 xz/gz，NSIS 这层只压 Electron 的 dll，
-# normal 与 maximum 体积差别很小，但 maximum(LZMA) 会让打安装包慢十几分钟。
-# 注：CI 用 PowerShell 跑 npx 时，行内 -c.compression=xxx 会被拆参、被当成配置文件路径，
-# 因此压缩级别统一在这里设置，不在 workflow 里用 -c 行内覆盖。
+# Nivel de compresión: normal (zlib). Las imágenes ya son xz/gz y esta capa NSIS solo comprime
+# los dll de Electron; la diferencia de tamaño entre normal y maximum es mínima, pero maximum
+# (LZMA) hace que construir el instalador tarde más de diez minutos.
+# Nota: cuando CI ejecuta npx con PowerShell, la opción en línea -c.compression=xxx se divide en
+# argumentos y se interpreta como una ruta de archivo de configuración; por eso el nivel de
+# compresión se fija aquí de forma centralizada y no se sobrescribe con -c en el workflow.
 compression: normal
 
 # ---------------- Linux / FydeOS ----------------
-# 这一段原来写在 package.json 的 "build" 字段里。electron-builder 26 的 schema
-# 已经不再接受 linux.desktop 那个形状，导致任何一次构建（包括 Windows）都在
-# 配置校验阶段直接失败。统一搬到这个文件、用 --config electron-builder.yml
-# 显式指定，就不会再被 package.json 里的旧配置抢走。
+# Esta sección estaba antes en el campo "build" de package.json. El esquema de electron-builder
+# 26 ya no acepta la forma de linux.desktop, lo que hacía que cualquier compilación (incluso en
+# Windows) fallara directamente en la fase de validación de la configuración. Al moverla aquí de
+# forma centralizada y especificarla explícitamente con --config electron-builder.yml, la antigua
+# configuración de package.json ya no la sobrescribe.
 linux:
   target:
     - AppImage
@@ -111,5 +123,5 @@ linux:
   desktop:
     entry:
       Name: ApkBuddyStart
-      Comment: 在 FydeOS / Linux 上管理安卓应用
+      Comment: Gestionar aplicaciones Android en FydeOS / Linux
       Categories: Utility;

@@ -1,8 +1,9 @@
 'use strict';
 /**
- * 安卓系统设置：不需要进安卓桌面，也不用装第三方工具，
- * 直接通过 adb 把常用的系统开关做成 ApkBuddyStart 设置页里的按钮。
- * 所有命令都是官方 shell 接口，不依赖 root。
+ * Ajustes del sistema Android: sin necesidad de entrar al escritorio de Android ni instalar
+ * herramientas de terceros, los interruptores de sistema más habituales se exponen como botones
+ * en la página de ajustes de ApkBuddyStart mediante adb. Todos los comandos son interfaces de
+ * shell oficiales y no requieren root.
  */
 const ACTIONS = {
   settings: 'android.settings.SETTINGS',
@@ -19,22 +20,22 @@ const ACTIONS = {
 };
 
 /**
- * 媒体流（STREAM_MUSIC = 3）的音量命令。Android 11 起系统去掉了 `media` 工具
- * （报 media: inaccessible or not found），同样的功能在 `cmd media_session volume` 里；
- * 旧镜像上没有它时再退回 `media volume`。
+ * Comando de volumen para el flujo de medios (STREAM_MUSIC = 3). Desde Android 11 el sistema
+ * eliminó la herramienta `media` (da media: inaccessible or not found); la misma función está en
+ * `cmd media_session volume`. En imágenes antiguas que no lo tengan, se recurre a `media volume`.
  */
 function volumeCmd(args) {
   return `(cmd media_session volume --stream 3 ${args} || media volume --stream 3 ${args})`;
 }
 
-/** 解析 `volume --get` 的输出，例如 `volume is 5 in range [0..15]` */
+/** Analiza la salida de `volume --get`, p. ej. `volume is 5 in range [0..15]` */
 function parseVolume(out) {
   const m = /volume is (\d+) in range \[(\d+)\.\.(\d+)\]/.exec(String(out || ''));
   if (!m) return null;
   return { index: Number(m[1]), min: Number(m[2]), max: Number(m[3]) };
 }
 
-/** 档位换算成界面用的百分比 */
+/** Convierte el nivel en un porcentaje para la interfaz */
 function volumePercent(v) {
   if (!v || v.max <= v.min) return 0;
   return Math.round(((v.index - v.min) / (v.max - v.min)) * 100);
@@ -55,7 +56,7 @@ class AndroidSettings {
     return c.shell(script, { timeout: 20000 });
   }
 
-  /** 读一批当前状态，供设置页显示 */
+  /** Lee un grupo de estados actuales para mostrarlos en la página de ajustes */
   async status() {
     const out = await this._sh([
       'echo "wifi=$(settings get global wifi_on)"',
@@ -99,8 +100,9 @@ class AndroidSettings {
   }
 
   /**
-   * 音量：界面给的是 0~100 的百分比，系统要的是媒体流的档位（常见 0~15，各镜像不同），
-   * 所以先读出档位范围再换算。
+   * Volumen: la interfaz da un porcentaje de 0 a 100, mientras que el sistema espera el nivel
+   * del flujo de medios (habitualmente 0~15, varía según la imagen), así que primero se lee el
+   * rango de niveles y luego se convierte.
    */
   async setVolume(percent) {
     const p = Math.max(0, Math.min(100, Math.round(Number(percent) || 0)));
@@ -110,7 +112,7 @@ class AndroidSettings {
     return { ok: true, volume: volumePercent({ ...range, index }) };
   }
 
-  /** 关闭系统动画 = 明显的「变快」体感，且几乎不损失功能 */
+  /** Desactivar las animaciones del sistema = sensación clara de «más rapidez» con casi ninguna pérdida de funciones */
   async setAnimations(on) {
     const v = on ? '1' : '0';
     await this._sh([
@@ -127,7 +129,7 @@ class AndroidSettings {
     return { ok: true, fontScale: Number(v) };
   }
 
-  /** 显示大小：改 dpi，越大内容越大（相当于系统「显示大小」档位） */
+  /** Tamaño de pantalla: cambiar el dpi; cuanto mayor, más grande el contenido (equivale al ajuste «Tamaño de pantalla» del sistema) */
   async setDensity(dpi) {
     const v = Math.max(120, Math.min(640, Math.round(Number(dpi) || 0)));
     if (!v) return { ok: false };
@@ -135,7 +137,7 @@ class AndroidSettings {
     return { ok: true, density: v };
   }
 
-  /** 一键整理：关动画 + 关遥测类服务 + 电池白名单，让应用更跟手 */
+  /** Limpieza con un toque: desactivar animaciones + servicios de telemetría + lista blanca de batería, para que las aplicaciones respondan mejor */
   async tune({ pkg } = {}) {
     const cmds = [
       'settings put global window_animation_scale 0',
@@ -155,7 +157,7 @@ class AndroidSettings {
     return { ok: true };
   }
 
-  /** 应用运行时权限一览 + 授权 */
+  /** Lista de permisos de ejecución de la aplicación + concesión de permisos */
   async permissions(pkg) {
     const c = await this.client();
     const dump = await c.shell(`dumpsys package ${pkg}`, { timeout: 20000 });

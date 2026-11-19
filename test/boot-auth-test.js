@@ -106,17 +106,32 @@ const adbDevices = (line) => `List of devices attached\n${line}\n`;
     const ok = await emu._saveViaAdb('adb');
     assert.equal(ok, false, 'Saving is not allowed when unhealthy');
   });
+// Extrae el cuerpo completo de un método hasta su llave de cierre.
+// Los offsets fijos se rompían al traducir los comentarios (cambia la longitud
+// del archivo), así que ahora se localiza el final real de la función.
+function methodBody(src, signature) {
+  const start = src.indexOf(signature);
+  assert.ok(start >= 0, `No se encontró ${signature}`);
+  // Hasta la siguiente definición de método de clase (indentado 2 espacios),
+  // o el final del archivo si es el último. Así no dependemos de balancear
+  // llaves que aparecen dentro de cadenas, plantillas o comentarios.
+  const rest = src.slice(start + signature.length);
+  const nextMethod = /\n  (?:async\s+)?[A-Za-z_$][\w$]*\s*\(/.exec(rest);
+  const end = nextMethod ? start + signature.length + nextMethod.index : src.length;
+  return src.slice(start, end);
+}
+
   await atest('Source-level: the snapshot save path must go through the health guard first', () => {
     const src = fs.readFileSync(path.join(__dirname, '..', 'src', 'core', 'emulator.js'), 'utf8');
-    const fn = src.slice(src.indexOf('async _saveViaAdb('), src.indexOf('async _saveViaAdb(') + 700);
+    const fn = methodBody(src, 'async _saveViaAdb(');
     assert.ok(/_adbGuestHealthy/.test(fn), '_saveViaAdb must check guest health first');
-    const stopFn = src.slice(src.indexOf('async stop('), src.indexOf('async stop(') + 2400);
+    const stopFn = methodBody(src, 'async stop(');
     assert.ok(/_adbGuestHealthy/.test(stopFn), 'stop() must also check health before shutdown');
     assert.ok(/invalidateSnapshot\(\)/.test(stopFn), 'An unhealthy shutdown must invalidate the snapshot');
   });
   await atest('Source-level: boot probing must detect unauthorized and self-heal with a cold boot', () => {
     const src = fs.readFileSync(path.join(__dirname, '..', 'src', 'core', 'engine.js'), 'utf8');
-    const boot = src.slice(src.indexOf('async bootEmulator('), src.indexOf('async bootEmulator(') + 4200);
+    const boot = methodBody(src, 'async bootEmulator(');
     assert.ok(/isUnauthorizedError/.test(boot), 'Probing must detect unauthorized from the error text');
     assert.ok(/deviceState\(\)/.test(boot), 'Probing must double-check via the devices state column');
     assert.ok(/invalidateSnapshot\(\)/.test(boot), 'A stuck authorization must invalidate the old snapshot');

@@ -1,15 +1,16 @@
 'use strict';
 /**
- * 本机 ↔ 安卓 的共享目录双向同步
+ * Sincronización bidireccional del directorio compartido PC ↔ Android
  *
- * 没有 root 的情况下无法真正「挂载」目录，所以采用增量同步：
- * 任何一侧新增/修改的文件都会在几秒内同步到另一侧，语义上等价于共享文件夹。
+ * Sin root no es posible «montar» un directorio de verdad, por lo que se usa sincronización
+ * incremental: cualquier archivo nuevo o modificado en un lado se sincroniza con el otro en
+ * cuestión de segundos, equivalente semánticamente a una carpeta compartida.
  */
 const fs = require('fs');
 const path = require('path');
 const store = require('./store');
 
-const MAX_FILE = 512 * 1024 * 1024; // 单文件 512MB 上限
+const MAX_FILE = 512 * 1024 * 1024; // Límite de 512 MB por archivo
 
 function walk(dir, base = dir, out = []) {
   let items = [];
@@ -68,11 +69,13 @@ class Sharer {
       await this.ensureDirs(onLog);
       const state = this.loadState();
 
-      // --- 本机 → 设备 ---
-      // 状态里同时记「本机 mtime」和「设备 mtime」两个值。
-      // 老实现只记一个 mtime、拉完写回本机时间，于是下一轮拿本机时间去和设备的
-      // 时间比 —— 永远不相等 → 每 8 秒把同一个文件从设备拉一遍，落盘时间又变，
-      // 再下一轮继续拉……表现就是「硬盘一直转、文件反复重写、空间越用越少」。
+      // --- PC → dispositivo ---
+      // En el estado se guardan dos valores: «mtime local» y «mtime del dispositivo».
+      // La implementación antigua guardaba un solo mtime y, tras la descarga, escribía la hora
+      // local; en la siguiente ronda se comparaba la hora local con la del dispositivo, que
+      // nunca coincidían → cada 8 segundos se volvía a descargar el mismo archivo, cambiaba la
+      // hora de escritura y la ronda siguiente seguía descargando… El resultado era «disco
+      // girando sin parar, archivos reescritos una y otra vez y espacio que se agotaba».
       const stateOf = (prev) => (prev ? {
         size: prev.size,
         lmtime: prev.lmtime || prev.mtime || 0,
@@ -96,8 +99,9 @@ class Sharer {
         }
       }
 
-      // --- 设备 → 本机 ---
-      // 优先用 toybox stat 拿真实 mtime；拿不到才退回 ls 解析（此时只能按大小判断）
+      // --- dispositivo → PC ---
+      // Se prefiere toybox stat para obtener el mtime real; si no se puede, se recurre al
+      // análisis de ls (en ese caso solo se puede juzgar por tamaño)
       let remoteList = null;
       try {
         remoteList = await client.listRemoteStat(this.remoteDir);
@@ -109,21 +113,23 @@ class Sharer {
       }
 
       for (const r of remoteList) {
-        // 超大文件（视频/游戏数据包）不往回拉：本地目录不该成为设备缓存的下水道
+        // Los archivos gigantes (vídeos / paquetes de datos de juegos) no se descargan: el
+        // directorio local no debe convertirse en el desagüe de la caché del dispositivo
         if (r.size > MAX_FILE) continue;
         const prev = stateOf(state[r.rel]);
         const sizeSame = !!prev && prev.size === r.size;
         const rmtimeSame = !!(prev && prev.rmtime && r.mtime)
           && Math.abs(prev.rmtime - r.mtime) <= 1500;
         if (prev && sizeSame && (rmtimeSame || prev.dir === 'up')) {
-          // 大小一致，且要么设备时间没变、要么这个文件就是我们刚推上去的：
-          // 只把设备时间记下来收工，绝不重复下载
+          // Mismo tamaño y, o bien la hora del dispositivo no ha cambiado, o bien este archivo
+          // es el que acabamos de subir: solo se anota la hora del dispositivo y se termina,
+          // sin volver a descargar
           if (r.mtime && prev.rmtime !== r.mtime) {
             state[r.rel] = { ...prev, rmtime: r.mtime };
           }
           continue;
         }
-        if (prev && sizeSame && !r.mtime) continue;   // 拿不到设备时间且大小相同 → 视为一致
+        if (prev && sizeSame && !r.mtime) continue;   // Sin hora del dispositivo y mismo tamaño → se considera idéntico
         const local = path.join(this.localDir, r.rel);
         try {
           fs.mkdirSync(path.dirname(local), { recursive: true });
@@ -149,7 +155,8 @@ class Sharer {
 
   async listRemoteRecursive(client, base, prefix = '', depth = 0, out = []) {
     if (depth > 6) return out;
-    // 优先一次 find + stat 拿全量（比逐目录 ls -l 快，也不受日期格式差异影响）
+    // Se prefiere un único find + stat para obtener todo (más rápido que ls -l directorio por
+    // directorio y no se ve afectado por diferencias de formato de fecha)
     if (depth === 0 && !prefix) {
       try {
         const text = await client.shell(
@@ -160,7 +167,7 @@ class Sharer {
           .filter(Boolean)
           .map((m) => ({ rel: m[3].replace(/^\.\//, ''), size: Number(m[1]), mtime: Number(m[2]) * 1000 }));
         if (rows.length) return rows;
-      } catch (_) { /* 落到 ls 解析 */ }
+      } catch (_) { /* Se recurre al análisis de ls */ }
     }
     const items = await client.listRemote(prefix ? `${base}/${prefix}` : base);
     for (const it of items) {

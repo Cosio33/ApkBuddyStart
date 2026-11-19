@@ -1,26 +1,26 @@
 'use strict';
 /**
- * 资源分配（内存 / CPU / 存储）的纯逻辑。
+ * Lógica pura de asignación de recursos (memoria / CPU / almacenamiento).
  *
- * 为什么要单独一层：「给安卓分多少内存」最终要落进 qemu 命令行（-memory / -cores），
- * 改完下次开机生效；但「用户能填多大」「填过头会发生什么」这套判断是纯函数，
- * 抽出来不依赖 electron，CI 里可以直接 require 做单测。
+ * ¿Por qué una capa aparte? «Cuánta memoria dar a Android» acaba en la línea de comandos de qemu (-memory / -cores),
+ * y solo surte efecto en el próximo arranque; en cambio, «cuánto puede introducir el usuario» y «qué ocurre si se pasa» es una lógica de función pura,
+ * extraída sin depender de electron, para que CI pueda hacer require directamente y ejecutar pruebas unitarias.
  *
- * 三条硬约束（都是实测踩出来的）：
- *   1. 内存不能把宿主吃满：Windows + 前台程序至少要留 25%，否则整机开始换页，
- *      安卓侧表现为长时间黑屏、动画卡死，看起来像「模拟器坏了」。
- *   2. 存储要按「安装包 × 1.8 + 2GB」估：50GB 的在线游戏解包后往往 80~90GB，
- *      只按安装包大小放行，一定会装到一半失败。
- *   3. 任何自动值都必须能算得出来：拿不到宿主信息就退回保守默认，不能返回 NaN。
+ * Tres restricciones duras (todas descubiertas a base de pruebas reales):
+ *   1. La memoria no debe agotar el host: Windows y las apps en primer plano necesitan al menos un 25 % libre; si no, el equipo empieza a paginar,
+ *      y en Android se traduce en pantallas negras prolongadas o animaciones congeladas, que parecen «el emulador se ha roto».
+ *   2. El almacenamiento se estima como «paquete de instalación × 1,8 + 2 GB»: un juego online de 50 GB suele ocupar 80~90 GB descomprimido;
+ *      validar solo por el tamaño del instalador hará que la instalación falle a mitad de camino.
+ *   3. Cualquier valor automático debe poder calcularse: si no se obtienen datos del host, se recurre a un valor conservador por defecto; nunca devolver NaN.
  */
 
 const DEFAULT_STEP_MB = 512;
 const MIN_MEM_MB = 1024;
-/** 给宿主（Windows + 前台程序）留的比例 */
+/** Proporción reservada para el host (Windows + aplicaciones en primer plano) */
 const HOST_RESERVE_RATIO = 0.25;
-/** 低于这个比例就提示「偏紧」 */
+/** Por debajo de esta proporción se avisa de que va «justo» */
 const TIGHT_RATIO = 0.8;
-/** 完全不够用（连系统都跑不动）的绝对下限 */
+/** Límite absoluto cuando no hay espacio suficiente (ni el sistema puede arrancar) */
 const ABSOLUTE_MIN_MB = 768;
 
 function toInt(v, fallback = 0) {
@@ -29,7 +29,7 @@ function toInt(v, fallback = 0) {
 }
 
 /**
- * 宿主能力。参数可注入，方便测试；不传就读本机。
+ * Capacidad del host. Los parámetros se pueden inyectar para facilitar las pruebas; si no se pasan, se lee la máquina local.
  * @returns {{ totalMB:number, cores:number }}
  */
 function hostProfile(sys) {
@@ -42,7 +42,7 @@ function hostProfile(sys) {
     totalMB = Math.round(Number(src.totalmem) / 1048576);
   } else {
     try {
-      // require('os') 放在函数里：避免模块加载期就去碰宿主环境
+      // require('os') dentro de la función: evitar acceder al entorno del host durante la carga del módulo
       const os = require('os');
       totalMB = Math.round(os.totalmem() / 1048576);
       cores = os.cpus() ? os.cpus().length : 0;
@@ -53,7 +53,7 @@ function hostProfile(sys) {
 }
 
 /**
- * 内存可填范围。没读到宿主内存时给一个保守上限，避免界面出现 0。
+ * Rango de memoria admisible. Si no se pudo leer la memoria del host, se da un límite superior conservador para evitar que la interfaz muestre 0.
  * @returns {{ minMB:number, maxMB:number, stepMB:number, totalMB:number }}
  */
 function memoryLimits(totalMB) {
@@ -65,7 +65,7 @@ function memoryLimits(totalMB) {
 }
 
 /**
- * 把用户填的内存收敛到合法值。0 = 自动，原样返回 0（由各底座自己推导）。
+ * Ajustar la memoria introducida por el usuario a un valor válido. 0 = automático, se devuelve tal cual (cada base lo deriva por su cuenta).
  * @returns {{ mb:number, capped:boolean, reason:string }}
  */
 function clampMemoryMB(mb, totalMB) {
@@ -85,8 +85,8 @@ function clampMemoryMB(mb, totalMB) {
 }
 
 /**
- * CPU 核心数收敛。0 = 自动。
- * 上限定在「物理核 - 1」，至少留 1 核给宿主；单核机器只给 1 核。
+ * Ajuste del número de núcleos de CPU. 0 = automático.
+ * El límite superior es «núcleos físicos - 1», dejando al menos 1 núcleo para el host; en máquinas de un solo núcleo se asigna 1.
  */
 function clampCores(n, hostCores) {
   const want = toInt(n);
@@ -100,7 +100,7 @@ function clampCores(n, hostCores) {
 }
 
 /**
- * 内存分配合不合理（用于界面提示 + 装大包前提醒）。
+ * ¿Es razonable la asignación de memoria? (para avisos en la interfaz y recordatorios antes de instalar paquetes grandes).
  * @returns {{ level:'ok'|'tight'|'insufficient'|'unknown', ratio:number, note:string }}
  */
 function memVerdict(allocMB, hostMB) {
@@ -124,7 +124,7 @@ function memVerdict(allocMB, hostMB) {
   return { level: 'ok', ratio, note: '' };
 }
 
-/** 安装一个包实际要占的数据分区空间（含解包与更新包冗余） */
+/** Espacio real de la partición de datos que ocupa instalar un paquete (incluye descompresión y redundancia del paquete de actualización) */
 function diskRequiredMB(packageBytes, ratio = 1.8, reserveMB = 2048) {
   const bytes = Math.max(0, Number(packageBytes) || 0);
   if (!bytes) return reserveMB;
@@ -132,18 +132,18 @@ function diskRequiredMB(packageBytes, ratio = 1.8, reserveMB = 2048) {
 }
 
 /**
- * 数据分区可填上限。磁盘只剩一点时不能让人填 64GB 然后装到一半失败。
+ * Límite superior de la partición de datos. Cuando queda poco disco, no hay que dejar introducir 64 GB para luego fallar a mitad de instalación.
  * @returns {{ maxGB:number, warnGB:number, freeMB:number }}
  */
 function diskLimits(freeMB) {
   const free = Math.max(0, toInt(freeMB));
-  // 分区镜像本身还要占宿主空间（动态镜像会涨到接近分区大小），留 20% 缓冲
+  // La imagen de la partición también ocupa espacio en el host (las imágenes dinámicas crecen casi hasta el tamaño de la partición); se deja un 20 % de margen
   const maxGB = Math.max(0, Math.floor((free / 1024) * 0.8));
   return { maxGB, warnGB: Math.max(0, maxGB - 8), freeMB: free };
 }
 
 /**
- * 收敛用户填的数据分区大小（GB）。0 = 自动。
+ * Ajustar el tamaño de la partición de datos introducido por el usuario (GB). 0 = automático.
  * @returns {{ gb:number, capped:boolean, reason:string }}
  */
 function clampDataGB(gb, freeMB) {
@@ -162,7 +162,7 @@ function clampDataGB(gb, freeMB) {
 }
 
 /**
- * 存储是否够装这个包。
+ * ¿Hay espacio suficiente para instalar este paquete?
  * @returns {{ ok:boolean, needMB:number, freeMB:number, shortMB:number, note:string }}
  */
 function storageVerdict(freeMB, packageBytes) {
@@ -181,8 +181,8 @@ function storageVerdict(freeMB, packageBytes) {
 }
 
 /**
- * 磁盘空间是否够装这个包（50GB 级游戏最常见的失败点）。
- * 和 storageVerdict 的区别：这个只看「够不够」，文案是给安装前拦下来用的。
+ * ¿Hay espacio en disco suficiente para instalar este paquete? (el punto de fallo más habitual en juegos de 50 GB).
+ * Diferencia con storageVerdict: aquí solo se mira «si alcanza», y el texto está pensado para bloquear la instalación antes de empezar.
  * @returns {{ ok:boolean, unknown?:boolean, freeMB:number, requiredMB:number, message:string }}
  */
 function diskVerdict(freeMB, requiredMB) {

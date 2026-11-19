@@ -1,20 +1,26 @@
 'use strict';
 /**
- * 底座注册表
+ * Registro de bases
  *
- * **只有一个底座：自带运行时（builtin）。**
+ * **Solo hay una base: el runtime incluido (builtin).**
  *
- * 0.5.6 起，ApkBuddyStart 在任何机器、任何情况下都只跑自己的 Android 运行时
- * （自带的 adb / emulator / 系统镜像），不再探测、接管、驱动任何第三方模拟器
- * （MuMu / 雷电 / 蓝叠 / WSA / FydeOS），也不提供「连接已有运行时」的模式。
+ * Desde la 0.5.6, ApkBuddyStart ejecuta en cualquier máquina y situación únicamente su propio
+ * runtime de Android (adb / emulator / imagen del sistema incluidos); ya no detecta, toma el control
+ * ni gestiona ningún emulador de terceros (MuMu / LDPlayer / BlueStacks / WSA / FydeOS),
+ * y tampoco ofrece el modo «conectar a un runtime existente».
  *
- * 为什么把可选底座整条链路删掉，而不是只留个开关关掉：
- *   - 只要代码里还留着探测分支，用户机器上装了 MuMu 就随时可能被「顺手接管」，
- *     表现成「点开 ApkBuddyStart 却跑的是别人家的模拟器」，数据、存档、镜像都不在自己以为的地方；
- *   - 第三方模拟器升级、换端口、改配置都会让 ApkBuddyStart 直接失效，而这些不是我们能修的；
- *   - 商店包 / 便携版只带自己的运行时，本来也不允许捆绑或依赖任何第三方模拟器。
- * 所以这里保留注册表的形式（上层接口不变），内容固定为 builtin：
- * 读设置、读残留配置、导入旧 settings.json 都不会再切到别的底座。
+ * Por qué se eliminó por completo la cadena de bases opcionales en lugar de dejar solo un
+ * interruptor para desactivarlas:
+ *   - Mientras quede una rama de detección en el código, un usuario con MuMu instalado podría ser
+ *     «tomado en cuenta» en cualquier momento, manifestándose como «abres ApkBuddyStart pero se
+ *     ejecuta el emulador de otro»; los datos, partidas e imágenes no están donde uno cree;
+ *   - Las actualizaciones, cambios de puerto o de configuración de emuladores de terceros dejan
+ *     ApkBuddyStart fuera de servicio, y eso no está en nuestras manos arreglarlo;
+ *   - El paquete de la tienda / versión portátil solo incluye su propio runtime y, de todos modos,
+ *     no se permite agrupar ni depender de ningún emulador de terceros.
+ * Por eso aquí se conserva el formato de registro (la interfaz superior no cambia), con contenido
+ * fijo en builtin: leer la configuración, leer ajustes residuales o importar un settings.json antiguo
+ * ya no cambiará a otra base.
  */
 
 const { Backend, CAPS } = require('./base');
@@ -24,14 +30,14 @@ const REGISTRY = [
   BuiltinBackend,
 ];
 
-/** 唯一底座。保留这个常量，是给「以后真要加底座」的地方留个明确落点。 */
+/** La única base. Se conserva esta constante para tener un punto claro donde añadir bases en el futuro. */
 const ONLY = 'builtin';
 
 function byId(id) {
   return REGISTRY.find((B) => B.id === id) || null;
 }
 
-/** 给界面用的描述清单（只留静态信息，能安全序列化） */
+/** Lista de descripciones para la interfaz (solo información estática, serializable de forma segura) */
 function describe() {
   return REGISTRY.map((B) => ({
     id: B.id,
@@ -42,17 +48,18 @@ function describe() {
 }
 
 /**
- * 按设置创建一个底座实例。
+ * Crea una instancia de base según la configuración.
  *
- * 注意：**故意忽略 settings.engine.mode**。老版本可能留下 mode=mumu / fydeos / attach，
- * 手改 settings.json 也可能写成别的值 —— 这些都必须被当成 builtin，
- * 否则「无论什么情况都独立运行」就是一句空话。返回值里的 id 一定是 'builtin'。
+ * Nota: **se ignora deliberadamente settings.engine.mode**. Versiones antiguas pueden haber
+ * dejado mode=mumu / fydeos / attach, y editar settings.json a mano también podría escribir
+ * otros valores; todos deben tratarse como builtin, o de lo contrario «funcionar de forma
+ * independiente pase lo que pase» sería solo una frase vacía. El id devuelto siempre es 'builtin'.
  *
  * @param {object} o { appRoot, settings, runtime, store, log, id }
  * @returns {{ backend: Backend, Cls: Function, id: string }}
  */
 function create({ appRoot, runtime, store, log, id: forced } = {}) {
-  // 显式传了别的 id（旧代码的回退路径）也一律落到 builtin
+  // Aunque se pase explícitamente otro id (ruta de retroceso de código antiguo), siempre se usa builtin
   const id = forced && byId(forced) ? forced : ONLY;
   const Cls = byId(id) || BuiltinBackend;
   const backend = new Cls(appRoot, { runtime, store, log });
@@ -60,8 +67,9 @@ function create({ appRoot, runtime, store, log, id: forced } = {}) {
 }
 
 /**
- * 自动挑选底座。现在只有一个，永远返回 builtin，不做任何探测：
- * 探测本身就会去碰第三方模拟器的目录 / 注册表，那正是要去掉的行为。
+ * Elección automática de base. Ahora solo hay una: siempre devuelve builtin y no hace ningún sondeo;
+ * el sondeo mismo accedería a directorios / al registro de emuladores de terceros, justamente el
+ * comportamiento que se quiere eliminar.
  */
 async function autoPick() {
   return { id: ONLY, reason: 'builtin-only' };

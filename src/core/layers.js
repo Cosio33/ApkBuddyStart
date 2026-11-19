@@ -1,13 +1,14 @@
 'use strict';
 /**
- * 容器式分层：只读基础镜像 + 精简运行时 + 可回收的临时层
+ * Capas de tipo contenedor: imagen base de solo lectura + runtime reducido + capas temporales reciclables
  *
- * 比喻（和 Docker 一样）：
- *   system-images/  = 只读 base layer，所有应用、所有会话共享一份，绝不复制
- *   avd/*.avd/      = 可写 thin layer（qcow2 差量 + quickboot 快照），只存改动
- *   _tmp/ snapshots = 可回收的 scratch layer
+ * Analogía (como Docker):
+ *   system-images/  = capa base de solo lectura, la comparten todas las aplicaciones y sesiones, nunca se copia
+ *   avd/*.avd/      = capa delgada escribible (delta qcow2 + instantánea quickboot), solo guarda los cambios
+ *   _tmp/ snapshots = capa temporal (scratch) reciclable
  *
- * 本模块只做「盘点」与「按明确清单回收」，默认 dryRun，不碰用户个人文件。
+ * Este módulo solo hace «inventario» y «reciclaje según una lista explícita»; por defecto es dryRun
+ * y no toca los archivos personales del usuario.
  */
 const fs = require('fs');
 const path = require('path');
@@ -30,7 +31,7 @@ function dirSize(dir) { return walk(dir).reduce((n, f) => n + f.size, 0); }
 const exists = (p) => { try { return fs.existsSync(p); } catch (_) { return false; } };
 
 /**
- * 盘点运行时占用，并列出「可安全回收」的条目。
+ * Inventaría el uso del runtime y enumera las entradas «que se pueden reciclar con seguridad».
  * @returns {{total:number, groups:Array, candidates:Array}}
  */
 function analyze(root, { keepAvd = 'apkstart.avd', aggressive = false, keepSnapshots = false } = {}) {
@@ -50,7 +51,7 @@ function analyze(root, { keepAvd = 'apkstart.avd', aggressive = false, keepSnaps
   groupOf('Capa de escritura AVD / instantánea', path.join(root, 'avd'));
   groupOf('platform-tools', path.join(root, 'platform-tools'));
 
-  // 1) QEMU 只需要 x86_64 一个目标；包里另外 7 个架构的二进制纯属浪费
+  // 1) QEMU solo necesita un objetivo: x86_64; los binarios de las otras 7 arquitecturas del paquete son un desperdicio
   const qemuDir = path.join(root, 'emulator', 'qemu', 'windows-x86_64');
   if (exists(qemuDir)) {
     for (const f of walk(qemuDir)) {
@@ -60,14 +61,14 @@ function analyze(root, { keepAvd = 'apkstart.avd', aggressive = false, keepSnaps
     }
   }
 
-  // 2) 镜像包里的许可证文本 / 冗余目录
+  // 2) Textos de licencia / directorios redundantes dentro del paquete de imágenes
   for (const f of walk(path.join(root, 'system-images'))) {
     if (/^(NOTICE\.txt|source\.properties)$/i.test(path.basename(f.path)) && f.size > 1024 * 1024) {
       add(f.path, f.size, 'Archivos de documentación de gran tamaño dentro del paquete de imagen');
     }
   }
 
-  // 3) 只保留一份系统镜像：API 34 Play 镜像就位后，API 30 的旧镜像全部过期
+  // 3) Conservar una sola imagen del sistema: cuando la imagen Play de API 34 está lista, la antigua API 30 queda obsoleta
   const play34 = path.join(root, 'system-images', 'android-34', 'google_apis_playstore', 'x86_64', 'system.img');
   if (exists(play34)) {
     const legacy = path.join(root, 'system-images', 'android-30');
@@ -76,7 +77,7 @@ function analyze(root, { keepAvd = 'apkstart.avd', aggressive = false, keepSnaps
   const stray = path.join(root, 'x86_64');
   if (exists(stray)) add(stray, dirSize(stray), 'Directorio de imagen duplicado por una extracción incorrecta', 'dir');
 
-  // 4) 非活动 AVD：产品只用 apkstart 一个；测试期遗留的 apkstart-arm / -houdini 等可清
+  // 4) AVD inactivos: el producto solo usa apkstart; los restos de pruebas como apkstart-arm / -houdini se pueden limpiar
   const avdHome = path.join(root, 'avd');
   if (exists(avdHome)) {
     for (const e of fs.readdirSync(avdHome, { withFileTypes: true })) {
@@ -84,15 +85,15 @@ function analyze(root, { keepAvd = 'apkstart.avd', aggressive = false, keepSnaps
       add(path.join(avdHome, e.name), dirSize(path.join(avdHome, e.name)),
         'AVD inactivo (con imágenes de datos de usuario antiguas de 8-16 GB)', 'dir');
     }
-    // 5) 锁文件：残留会导致「AVD is already running」
+    // 5) Archivos de bloqueo: los restos provocan «AVD is already running»
     for (const f of walk(avdHome)) {
       if (/\.lock$/i.test(f.path)) add(f.path, f.size, 'Archivo de bloqueo residual del cierre anormal anterior');
     }
-    // 6) 快速启动快照：ram.img ≈ 分配给虚拟机的内存，损坏或配置变更后必须丢弃
+    // 6) Instantáneas de arranque rápido: ram.img ≈ la memoria asignada a la máquina virtual; si se dañan o cambia la configuración, hay que descartarlas
     const activeAvd = path.join(avdHome, keepAvd);
     if (exists(activeAvd) && !keepSnapshots) {
       for (const e of fs.readdirSync(activeAvd, { withFileTypes: true })) {
-        // 正常快照 + 删除失败时改名留下的旧快照，都可回收
+        // Tanto las instantáneas normales como las antiguas renombradas tras un fallo de borrado son reciclables
         if (!e.isDirectory() || !/^snapshots(\.stale-\d+)?$/.test(e.name)) continue;
         const p = path.join(activeAvd, e.name);
         add(p, dirSize(p), 'Instantánea quickboot antigua (se reconstruirá automáticamente tras cambiar la configuración)', 'dir');
@@ -100,7 +101,7 @@ function analyze(root, { keepAvd = 'apkstart.avd', aggressive = false, keepSnaps
     }
   }
 
-  // 7) 下载缓存 / QEMU 遗留 ISO
+  // 7) Caché de descargas / ISO residuales de QEMU
   for (const d of ['_tmp', 'images']) {
     const p = path.join(root, d);
     if (exists(p)) {
@@ -109,9 +110,10 @@ function analyze(root, { keepAvd = 'apkstart.avd', aggressive = false, keepSnaps
     }
   }
 
-  // 8) 激进裁剪：仅构建发行包时启用。
-  // 注意：Qt6WebEngineCoreAndroidEmu.dll 是 qemu-system-x86_64.exe 的加载时依赖，
-  // 实测删掉会直接起不来，绝不能放进清单；qsn/netsim 也可能被快照与网络功能按需调用，保守保留。
+  // 8) Recorte agresivo: solo se activa al construir el paquete de distribución.
+  // Nota: Qt6WebEngineCoreAndroidEmu.dll es una dependencia de carga de qemu-system-x86_64.exe;
+  // en pruebas, borrarla impide arrancar, así que nunca debe incluirse en la lista; qsn/netsim
+  // también pueden ser invocados bajo demanda por las instantáneas y las funciones de red, se conservan por prudencia.
   if (aggressive) {
     const extras = [
       ['emulator/crashreport.exe', 'Herramienta de informes de fallos (no necesaria en modo headless)'],
@@ -127,8 +129,9 @@ function analyze(root, { keepAvd = 'apkstart.avd', aggressive = false, keepSnaps
 }
 
 /**
- * 回收。必须显式传 apply:true；调用方（UI/构建脚本）负责先展示清单并取得确认。
- * 安全约束：任何目标都必须在 root 之内，且不允许把 root 自身删掉。
+ * Reciclaje. Hay que pasar explícitamente apply:true; quien llama (UI/script de construcción) debe
+ * mostrar antes la lista y obtener confirmación. Restricción de seguridad: todo objetivo debe estar
+ * dentro de root y no se permite borrar el propio root.
  */
 function prune(root, { apply = false, keepAvd, aggressive = false, keepSnapshots = false, onRemove = () => {} } = {}) {
   const report = analyze(root, { keepAvd, aggressive, keepSnapshots });
@@ -145,20 +148,20 @@ function prune(root, { apply = false, keepAvd, aggressive = false, keepSnapshots
         removed.push(c);
         saved += c.size;
         onRemove(c);
-      } catch (_) { /* 占用中的文件跳过，下次再清 */ }
+      } catch (_) { /* Los archivos en uso se omiten y se limpian la próxima vez */ }
     }
   }
   return { ...report, apply, removed, saved, after: apply ? report.total - saved : report.total };
 }
 
-/** 给设置页用的简短摘要 */
+/** Breve resumen para la página de ajustes */
 function summary(root) {
   const a = analyze(root);
   const mb = (n) => (n >= 1048576 * 1024
     ? `${(n / 1073741824).toFixed(2)} GB`
     : `${(n / 1048576).toFixed(0)} MB`);
-  // 除了运行时目录，用户最关心「这东西一共占了我多少盘」：
-  // AVD（应用数据 + 快照）、APK 缓存、图标、日志都算进来。
+  // Aparte del directorio del runtime, lo que más interesa al usuario es «cuánto disco ocupa todo esto»:
+  // se incluyen el AVD (datos de aplicaciones + instantánea), la caché de APK, los iconos y los registros.
   const store = require('./store');
   const extra = [
     { key: 'avd', label: 'Datos de Android (aplicaciones + instantánea)', path: path.join(store.DATA_DIR, 'avd') },

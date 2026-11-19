@@ -1,24 +1,24 @@
 'use strict';
 /**
- * 驱动（兼容补丁）扩展模块。
+ * Módulo de extensión de controladores (parches de compatibilidad).
  *
- * 背景：ApkBuddyStart 用的是官方 emulator + 固定镜像，但「能不能跑起来」非常吃机器：
- * 老显卡的 GLES 只到 3.1、没有 WHPX 只能走 TCG、某些核显 + 老驱动一开 host 渲染就崩……
- * 这些差异没法靠一份默认参数覆盖所有机器，而发版周期又跟不上用户的机器型号。
+ * Contexto: ApkBuddyStart usa el emulator oficial y una imagen fija, pero «si llega a arrancar» depende mucho de la máquina:
+ * las GPU antiguas solo tienen GLES 3.1, sin WHPX solo queda TCG, ciertas iGPU con controladores viejos se caen en cuanto se activa el renderizado host…
+ * Estas diferencias no se pueden cubrir con un único juego de parámetros por defecto, y el ritmo de lanzamiento no sigue el ritmo de los modelos de los usuarios.
  *
- * 所以把它做成**数据驱动**的扩展：一个驱动就是一份 JSON，声明「我匹配哪些机器」
- * + 「匹配上以后改哪些启动参数」。用户可以自己写、自己导入、互相分享，不需要改代码。
+ * Por eso se ha hecho como extensión **orientada a datos**: un controlador es un JSON que declara «a qué máquinas coincido»
+ * y «qué parámetros de arranque cambio cuando coincido». El usuario puede escribirlo, importarlo y compartirlo, sin tocar código.
  *
- * 设计上的三条硬约束：
- *   1. **只认 JSON，不执行任何代码**。没有 require / eval / 脚本钩子 —— 驱动文件
- *      可以从网上下载、可以互相传，绝不能因此获得在本机执行任意代码的能力。
- *   2. **白名单**。能改的只有启动参数里明确列出的那些：`-gpu=…`、`-accel=…`、
- *      少量 config.ini 键、少量环境变量。`-wipe-data`、`-datadir`、`-sysdir`、
- *      `disk.dataPartition.size` 这类会毁数据 / 改落点的键一律拒绝。
- *   3. **可预期**。匹配不上就不生效；多个驱动同时命中时按 `priority` 从小到大叠加，
- *      后应用的覆盖前面的；每次开机把「用了哪些驱动」写进日志和设置页。
+ * Tres restricciones duras de diseño:
+ *   1. **Solo se acepta JSON, no se ejecuta ningún código**. No hay require / eval / hooks de script: el archivo
+ *      se puede descargar de internet y pasar de unos a otros, y en ningún caso debe permitir ejecutar código arbitrario en la máquina.
+ *   2. **Lista blanca**. Solo se pueden cambiar los parámetros de arranque enumerados explícitamente: `-gpu=…`, `-accel=…`,
+ *      algunas claves de config.ini y algunas variables de entorno. Claves como `-wipe-data`, `-datadir`, `-sysdir` o
+ *      `disk.dataPartition.size`, que destruyen datos o cambian la ubicación, se rechazan siempre.
+ *   3. **Previsibilidad**. Si no coincide, no se aplica; si coinciden varios, se combinan por `priority` de menor a mayor,
+ *      y los aplicados después sobrescriben a los anteriores; en cada arranque se escribe en el log y en Ajustes qué controladores se usaron.
  *
- * 文件格式见 docs/drivers.md，内置示例在 src/drivers/。
+ * El formato del archivo está en docs/drivers.md; los ejemplos integrados están en src/drivers/.
  */
 
 const fs = require('fs');
@@ -28,17 +28,17 @@ const DRIVER_FORMAT = 'apkstart-driver/1';
 const MAX_DRIVER_BYTES = 256 * 1024;
 const MAX_DRIVERS = 200;
 
-/** 驱动能改的启动参数：`-flag=value` 形式，value 必须匹配白名单正则 */
+/** Parámetros de arranque que el controlador puede cambiar: formato `-flag=value`, el valor debe coincidir con la regex de la lista blanca */
 const ARG_RULES = {
   '-gpu': /^(auto|host|swiftshader|swiftshader_indirect|swangle|software|angle|angle_indirect|mesa)$/,
   '-accel': /^(auto|off|on|whpx|hax|haxm|aehd|tcg)$/,
   '-feature': /^[A-Za-z0-9_,.\-]{1,160}$/,
   '-gltransport': /^(pipe|asgpu|virtio)$/,
-  // 直通给 qemu 的单个参数。限制字符集，且不许出现 -drive/-virtfs 这类挂载/写盘参数
+  // Un único parámetro que se pasa directamente a qemu. Se restringe el juego de caracteres y se prohíben parámetros de montaje/escritura como -drive/-virtfs
   '-qemu': /^-?[A-Za-z0-9_+=,.:/\-]{1,120}$/,
 };
 
-/** 只允许「开关型」参数（不带值） */
+/** Solo se permiten parámetros de «interruptor» (sin valor) */
 const FLAG_ONLY = new Set([
   '-no-audio',
   '-no-boot-anim',
@@ -49,8 +49,8 @@ const FLAG_ONLY = new Set([
 ]);
 
 /**
- * 明确拒绝的参数：会删数据、改落点、绕过我们的端口/AVD 管理。
- * 单独列出来是为了在报错时说清楚「为什么不行」，而不是只说「不在白名单里」。
+ * Parámetros rechazados explícitamente: borran datos, cambian la ubicación o eluden nuestra gestión de puertos/AVD.
+ * Se enumeran aparte para poder explicar en el error «por qué no se puede», en lugar de decir solo «no está en la lista blanca».
  */
 const FORBIDDEN_ARGS = {
   '-wipe-data': 'Borrará las aplicaciones y datos del usuario',
@@ -62,7 +62,7 @@ const FORBIDDEN_ARGS = {
   '-http-proxy': 'El proxy se configura en los ajustes del sistema',
 };
 
-/** 驱动能改的 config.ini 键 */
+/** Claves de config.ini que el controlador puede cambiar */
 const INI_RULES = {
   'hw.gpu.mode': /^(auto|host|swiftshader|swiftshader_indirect|swangle|software|angle|angle_indirect|mesa)$/,
   'hw.gpu.enabled': /^(yes|no)$/,
@@ -77,7 +77,7 @@ const INI_RULES = {
   'hw.lcd.density': /^\d{3,4}$/,
 };
 
-/** 驱动能改的环境变量名 */
+/** Nombres de variables de entorno que el controlador puede cambiar */
 const ENV_NAME_RULES = [
   /^ANDROID_[A-Z0-9_]{2,40}$/,
   /^QEMU_[A-Z0-9_]{2,40}$/,
@@ -86,7 +86,7 @@ const ENV_NAME_RULES = [
   /^EMUGL_[A-Z0-9_]{2,40}$/,
 ];
 
-/** match 里允许出现的键（多一个都算错，避免用户以为自己写了但没生效） */
+/** Claves permitidas en match (una más ya cuenta como error, para evitar que el usuario crea que lo escribió y no surtió efecto) */
 const MATCH_KEYS = new Set([
   'any', 'platform', 'arch', 'gpuVendor', 'gpuName', 'cpuVendor',
   'osBuild', 'totalMB', 'cores', 'accel', 'emulatorVersion',
@@ -96,7 +96,7 @@ const EFFECT_KEYS = new Set([
   'gpuMode', 'forceTcg', 'emulatorArgs', 'configIni', 'env', 'notes',
 ]);
 
-// ---------------- 小工具 ----------------
+// ---------------- Utilidades ----------------
 
 const isObj = (v) => !!v && typeof v === 'object' && !Array.isArray(v);
 
@@ -109,7 +109,7 @@ function asArray(v) {
   return Array.isArray(v) ? v : [v];
 }
 
-/** 编译用户写的正则：长度与语法都要能兜住，编译失败返回 null（校验阶段会报错） */
+/** Compilar la regex escrita por el usuario: longitud y sintaxis deben estar acotadas; si falla, devuelve null (la validación avisará) */
 function safeRegex(pattern) {
   const s = String(pattern || '');
   if (!s || s.length > 200) return null;
@@ -120,7 +120,7 @@ function safeRegex(pattern) {
   }
 }
 
-/** 版本号只取前四段数字比较，'36.4.9' vs '36.4.10' 不能按字符串比 */
+/** La versión solo se compara por los cuatro primeros segmentos numéricos; '36.4.9' frente a '36.4.10' no se puede comparar como cadena */
 function versionParts(v) {
   return String(v || '')
     .split(/[^\d]+/)
@@ -150,7 +150,7 @@ function inRange(value, range) {
   return true;
 }
 
-// ---------------- 校验 ----------------
+// ---------------- Validación ----------------
 
 function validateMatch(match, errors) {
   if (match === undefined) return {};
@@ -274,10 +274,10 @@ function validateEnv(env, errors) {
 }
 
 /**
- * 校验一份驱动（就是 JSON.parse 之后的对象）。
- * 返回 errors 是给人看的，能一次列全，不要「修一个报一个」。
+ * Validar un controlador (el objeto resultante de JSON.parse).
+ * Los errors devueltos son para personas: se listan todos de una vez, nada de «arregla uno y sale el siguiente».
  * @param {object} raw
- * @param {object} [opts] { file } 出错时带上文件名
+ * @param {object} [opts] { file } para incluir el nombre de archivo si hay error
  * @returns {{ ok:boolean, errors:string[], driver:object|null }}
  */
 function validateDriver(raw, { file = '' } = {}) {
@@ -350,7 +350,7 @@ function validateDriver(raw, { file = '' } = {}) {
       description: String(raw.description || '').slice(0, 400),
       homepage: String(raw.homepage || '').slice(0, 200),
       priority: Number(raw.priority || 0),
-      // 内置示例统一 disabled，用户自己的默认启用
+      // Los ejemplos integrados van todos deshabilitados; los del usuario se habilitan por defecto
       enabled: raw.enabled !== false,
       match,
       effect,
@@ -359,10 +359,10 @@ function validateDriver(raw, { file = '' } = {}) {
   };
 }
 
-// ---------------- 匹配 ----------------
+// ---------------- Coincidencia ----------------
 
 /**
- * 组装「这台机器」的画像，喂给 match。
+ * Ensamblar el «perfil» de esta máquina para pasarlo a match.
  * @param {object} o { info, gpuVendor, gpuName, osBuild, accel, emulatorVersion }
  */
 function hostContext({ info = {}, gpuVendor = 'unknown', gpuName = '', osBuild = 0, accel = 'unknown', emulatorVersion = '' } = {}) {
@@ -382,7 +382,7 @@ function hostContext({ info = {}, gpuVendor = 'unknown', gpuName = '', osBuild =
 }
 
 /**
- * 匹配结果里同时返回「命中了哪几条」，界面能解释「为什么这个驱动生效了」。
+ * El resultado de la coincidencia devuelve también «a qué claves se debió», para que la interfaz explique «por qué este controlador se aplicó».
  * @returns {{ ok:boolean, hits:string[] }}
  */
 function matchHost(match, host) {
@@ -427,14 +427,14 @@ function matchHost(match, host) {
   return { ok: hits.length > 0, hits };
 }
 
-/** 匹配条件越多越"具体"：同等 priority 时，泛化驱动先应用，专门的驱动后应用（覆盖它） */
+/** Cuantas más condiciones de coincidencia, más «específico»: con igual priority, los controladores genéricos se aplican primero y los específicos después (los sobrescriben) */
 function specificity(match) {
   return Object.keys(match || {}).filter((k) => k !== 'any').length;
 }
 
 /**
- * 把命中的驱动按「泛化 → 具体 → priority」顺序叠成一份效果。
- * 后面的覆盖前面的：gpuMode/forceTcg 取最后一个，args 同 flag 取最后一个，ini/env 合并。
+ * Combina los controladores coincidentes en un único efecto, en orden «genérico → específico → priority».
+ * Los posteriores sobrescriben a los anteriores: gpuMode/forceTcg toman el último, args con el mismo flag toman el último, ini/env se fusionan.
  */
 function mergeEffect(drivers) {
   const effect = {
@@ -461,11 +461,11 @@ function mergeEffect(drivers) {
 }
 
 /**
- * 从一堆（已校验的）驱动里挑出这台机器要用的，并合成最终效果。
+ * Elegir de entre un montón de controladores (ya validados) los que usa esta máquina y componer el efecto final.
  *
- * `state` 是用户在界面上做的显式开关（id → true/false），优先级高于文件里的
- * `enabled`：内置示例默认 `enabled:false`，用户点一下「启用」就写进 state，
- * 不需要去安装目录改 JSON（商店版目录是只读的，改不了）。
+ * `state` es el interruptor explícito del usuario en la interfaz (id → true/false) y tiene prioridad sobre
+ * el `enabled` del archivo: los ejemplos integrados vienen con `enabled:false` por defecto; si el usuario pulsa «Activar»,
+ * se escribe en state y no hace falta ir a la carpeta de instalación a editar el JSON (el directorio de la versión de tienda es de solo lectura).
  *
  * @param {object} o { drivers, host, state, disabled }
  * @returns {{ applied:Array, skipped:Array, effect:object }}
@@ -495,21 +495,21 @@ function resolve({ drivers = [], host = {}, state = {}, disabled = [] } = {}) {
   return { applied, skipped, effect: mergeEffect(applied) };
 }
 
-// ---------------- 文件 IO ----------------
+// ---------------- E/S de archivos ----------------
 
-/** 用户驱动目录（与设置、日志同级，跟着数据目录走） */
+/** Directorio de controladores del usuario (al mismo nivel que ajustes y logs; sigue al directorio de datos) */
 function userDir(store) {
   return path.join(store.DATA_DIR, 'drivers');
 }
 
-/** 随包内置的示例驱动（只读；默认 enabled:false，作为模板给人抄） */
+/** Ejemplos integrados en el paquete (solo lectura; con enabled:false por defecto, sirven de plantilla para copiar) */
 function bundledDir(appRoot) {
   return path.join(appRoot || '.', 'src', 'drivers');
 }
 
 /**
- * 读一个目录里的全部驱动。坏文件不阻断其它驱动：
- * 报错收集起来交给界面显示，能用的照常用。
+ * Leer todos los controladores de un directorio. Un archivo malo no bloquea a los demás:
+ * los errores se recogen para mostrarlos en la interfaz y los que funcionan se usan con normalidad.
  * @returns {{ drivers:Array, errors:Array<{file:string, errors:string[]}>, dir:string }}
  */
 function loadDir(dir) {
@@ -544,7 +544,7 @@ function loadDir(dir) {
   return out;
 }
 
-/** 读多个目录并按 id 去重：用户目录优先（同 id 时覆盖内置） */
+/** Leer varios directorios y deduplicar por id: el directorio del usuario va primero (con el mismo id, sobrescribe al integrado) */
 function loadAll(dirs = []) {
   const all = [];
   const errors = [];
@@ -561,8 +561,8 @@ function loadAll(dirs = []) {
 }
 
 /**
- * 导入一份驱动：先校验，再按 id 存成 `<id>.json`。
- * 文件名只由校验过的 id 决定，用户给的文件名不参与拼接（挡住 ../ 之类的路径穿越）。
+ * Importar un controlador: primero se valida y luego se guarda como `<id>.json`.
+ * El nombre del archivo lo decide solo el id ya validado; el nombre que dé el usuario no interviene en la concatenación (bloquea path traversal como ../).
  * @returns {{ ok:boolean, file?:string, driver?:object, errors?:string[] }}
  */
 function importDriver(srcFile, destDir) {
@@ -587,8 +587,8 @@ function importDriver(srcFile, destDir) {
 }
 
 /**
- * 导出一份「本机模板」：把当前机器的画像填进 match，
- * 用户只要改 effect 就能做出「只对我这台机器生效」的驱动。
+ * Exportar una «plantilla de esta máquina»: se rellena match con el perfil de la máquina actual,
+ * y el usuario solo tiene que cambiar effect para crear un controlador «que solo se aplique a mi máquina».
  */
 function templateFromHost(host = {}, { name = 'Mi máquina' } = {}) {
   const gpu = host.gpuVendor && host.gpuVendor !== 'unknown' ? host.gpuVendor : 'unknown';
@@ -617,7 +617,7 @@ function templateFromHost(host = {}, { name = 'Mi máquina' } = {}) {
   };
 }
 
-/** 把 gpuMode 翻译成 emulator 的 -gpu 值（auto 表示不改） */
+/** Traducir gpuMode al valor -gpu de emulator (auto significa no cambiarlo) */
 function gpuModeToArg(mode) {
   const v = String(mode || '').trim();
   return v && v !== 'auto' ? v : '';

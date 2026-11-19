@@ -1,8 +1,11 @@
 'use strict';
 /**
- * 显示适配的纯计算部分（可单测，不依赖 Electron / adb）。
- *  - 全屏：Android 分辨率对齐显示器工作区，内容自动铺满；
- *  - 窗口：保持竖屏预设，用户拖动窗口时由 Qt 自动缩放，尺寸记在应用元数据里。
+ * Parte de cálculo puro de la adaptación de pantalla (probable con pruebas unitarias, sin
+ * dependencias de Electron / adb).
+ *  - Pantalla completa: la resolución de Android se alinea con el área de trabajo del monitor y
+ *    el contenido se expande automáticamente;
+ *  - Ventana: se mantiene la predefinición vertical; al arrastrar la ventana, Qt la escala
+ *    automáticamente y el tamaño se guarda en los metadatos de la aplicación.
  */
 function densityFor(w, h, manual) {
   if (manual > 0) return Math.max(120, Math.min(640, Math.round(manual)));
@@ -28,10 +31,11 @@ function defaultBounds(area) {
 }
 
 /**
- * 全屏 = 铺满屏幕高度并水平居中。
- * 模拟器窗口的宽高比在开机时被 LCD 锁死（9:16），直接 SW_MAXIMIZE 只会得到
- * 一个贴在左边、宽度不变的窗口；按比例算出高度铺满、再居中，视觉上就是
- * 「应用占满屏幕」，且画面不会变形。
+ * Pantalla completa = ocupar toda la altura de la pantalla y centrar horizontalmente.
+ * La relación de aspecto de la ventana del emulador queda fijada por el LCD al arrancar (9:16);
+ * un SW_MAXIMIZE directo solo produce una ventana pegada a la izquierda con el mismo ancho.
+ * Calcular la altura a pantalla completa según la proporción y luego centrarla da, visualmente,
+ * «la aplicación ocupa toda la pantalla» sin deformar la imagen.
  */
 function fullscreenBounds(portrait, area) {
   const p = portraitSize(portrait);
@@ -46,11 +50,13 @@ function fullscreenBounds(portrait, area) {
 }
 
 /**
- * Android 侧分辨率：两种模式都保持竖屏预设。
- * 原因：模拟器窗口的宽高比在开机时就被 LCD 尺寸锁死了（实测改成 1920x1080 后
- * 窗口仍然只接受 9:16，画面被塞进去会留黑边或变形）。所以「全屏」= 把窗口
- * 最大化铺满屏幕，「窗口」= 竖屏可自由拉伸，两者共用同一份 Android 分辨率，
- * 切换时不需要重启运行时，也不会让应用重新布局。
+ * Resolución del lado de Android: ambos modos mantienen la predefinición vertical.
+ * Motivo: la relación de aspecto de la ventana del emulador queda bloqueada por el tamaño del LCD
+ * al arrancar (en pruebas, al cambiar a 1920x1080 la ventana seguía aceptando solo 9:16 y la
+ * imagen quedaba con bandas negras o deformada). Por tanto, «pantalla completa» = maximizar la
+ * ventana para llenar la pantalla, y «ventana» = vertical con estiramiento libre; ambos comparten
+ * la misma resolución de Android, así que cambiar de modo no requiere reiniciar el runtime ni
+ * hace que la aplicación rehaga su diseño.
  */
 function sizeFor(mode, portrait, area) {
   return portraitSize(portrait);

@@ -9,7 +9,7 @@
 </head>
 <body>
 
-<!-- 品牌标记：小尺寸下也要认得出来，所以用矢量而不是 1024 的位图缩到 22px -->
+<!-- Marca: debe reconocerse incluso a pequeño tamaño, por eso se usa un vector en lugar de reducir un mapa de bits de 1024 a 22 px -->
 <svg width="0" height="0" style="position:absolute" aria-hidden="true">
   <defs>
     <linearGradient id="brandGrad" x1="0" y1="0" x2="1" y2="1">
@@ -91,7 +91,7 @@
   </footer>
 </main>
 
-<!-- 启动欢迎卡：替代原来散落的各种启动小提示 -->
+<!-- Tarjeta de bienvenida del arranque: sustituye los antiguos avisos dispersos de inicio -->
 <div class="modal-mask welcome-mask" id="welcomeMask" hidden>
   <div class="welcome" role="dialog" aria-modal="true" aria-labelledby="welcomeHi">
     <div class="welcome-hero">
@@ -115,10 +115,10 @@
   </div>
 </div>
 
-<!-- 安装进度 -->
+<!-- Progreso de la instalación -->
 <div class="toast-wrap" id="toastWrap"></div>
 
-<!-- 拖放遮罩 -->
+<!-- Máscara de arrastrar y soltar -->
 <div class="dropzone" id="dropzone">
   <div class="dropzone-inner">
     <svg viewBox="0 0 24 24" width="34" height="34" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M12 16V4"/><path d="m7 9 5-5 5 5"/><path d="M5 20h14"/></svg>
@@ -127,10 +127,10 @@
   </div>
 </div>
 
-<!-- 右键菜单 -->
+<!-- Menú contextual -->
 <div class="ctxmenu" id="ctxmenu"></div>
 
-<!-- 设置 -->
+<!-- Ajustes -->
 <div class="modal-mask" id="settingsMask">
   <div class="modal">
     <header class="modal-head">
@@ -391,10 +391,10 @@
         <div class="field">
           <label>Idioma del sistema</label>
           <select id="setLocale">
-            <option value="zh-CN">简体中文（推荐）</option>
-            <option value="zh-TW">繁體中文</option>
+            <option value="zh-CN">Chino simplificado (recomendado)</option>
+            <option value="zh-TW">Chino tradicional</option>
             <option value="en-US">English (nativo de la imagen)</option>
-            <option value="ja-JP">日本語</option>
+            <option value="ja-JP">Japonés</option>
             <option value="ko-KR">한국어</option>
           </select>
           <span class="sub">Idioma de los ajustes del sistema, diálogos de permisos y formato de fecha. Se inyecta en la máquina virtual al arrancar,<b>Se aplica al reiniciar el entorno</b>. Este ajuste no afecta al teclado chino; se controla por separado más abajo.</span>
@@ -791,7 +791,7 @@
             </div>
             <div class="about-qr">
               <img src="assets/douyin-qr.jpg" alt="Código QR de Douyin" width="112" height="112" />
-              <span class="about-qr-tip">Douyin · 日常MIKU</span>
+              <span class="about-qr-tip">Douyin · Daily MIKU</span>
             </div>
           </div>
           <div class="about-info">
@@ -799,7 +799,7 @@
             <p class="note">Lanzador de aplicaciones Android en Windows con instalación por doble clic: instalar APK, accesos directos, ventanas independientes e intercambio de archivos en ambos sentidos.</p>
             <div class="about-links">
               <a href="https://github.com/RoutineMiku/apkstart" target="_blank" rel="noopener">GitHub · RoutineMiku/apkstart</a>
-              <a href="https://v.douyin.com/9TIIxVCANig/" target="_blank" rel="noopener">Douyin · @日常MIKU (contactar al autor)</a>
+              <a href="https://v.douyin.com/9TIIxVCANig/" target="_blank" rel="noopener">Douyin · @Daily MIKU (contactar al autor)</a>
               <span class="powered">Powered by <b>RoutineMiku</b></span>
             </div>
           </div>

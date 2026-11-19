@@ -1,7 +1,7 @@
 'use strict';
 /**
- * 本地持久化：应用清单 + 设置
- * 数据目录：%APPDATA%\apkstart（MSIX/商店版见下面的 STORE_BUILD 说明）
+ * Persistencia local: manifiesto de apps + ajustes
+ * Directorio de datos: %APPDATA%\apkstart (para la versión MSIX/Store véase la nota de STORE_BUILD más abajo)
  */
 const fs = require('fs');
 const path = require('path');
@@ -9,18 +9,18 @@ const os = require('os');
 const { safeFilePart } = require('./pkgname');
 
 /**
- * 是不是 Microsoft Store（MSIX / APPX）打包版？
+ * ¿Es una versión empaquetada de Microsoft Store (MSIX / APPX)?
  *
- * MSIX 的 full-trust 应用会把 `%APPDATA%` / `%LOCALAPPDATA%` 下的**写入**
- * 重定向到 `%LOCALAPPDATA%\Packages\<PackageFamilyName>\LocalCache\...`，
- * 但环境变量和 API 返回的仍然是被重定向前的「真路径」。这会造成两类事故：
- *   1. 我们从 %APPDATA%\apkstart 里 spawn 出来的 emulator/adb/qemu 若没有包身份，
- *      按真路径去找文件会「文件不存在」；
- *   2. 用户点「打开数据目录」看到的是空目录。
- * 所以商店版直接把数据目录放到 AppData **之外**（%USERPROFILE%\ApkBuddyStart），
- * 完全不进虚拟化范围，父子进程看到的是同一份真实文件。
+ * Las aplicaciones full-trust de MSIX redirigen **las escrituras** bajo `%APPDATA%` / `%LOCALAPPDATA%`
+ * a `%LOCALAPPDATA%\Packages\<PackageFamilyName>\LocalCache\...`, pero las variables de entorno y las API
+ * siguen devolviendo la «ruta real» anterior a la redirección. Eso provoca dos tipos de incidentes:
+ *   1. Si el emulator/adb/qemu que lanzamos desde %APPDATA%\apkstart no tiene identidad de paquete,
+ *      buscar los archivos por la ruta real da «archivo no encontrado»;
+ *   2. El usuario pulsa «Abrir directorio de datos» y ve un directorio vacío.
+ * Por eso, en la versión de Store el directorio de datos se pone **fuera** de AppData (%USERPROFILE%\ApkBuddyStart),
+ * quedando completamente fuera del ámbito de virtualización, y los procesos padre e hijo ven los mismos archivos reales.
  *
- * process.windowsStore 由 Electron 在 MSIX/APPX 环境下注入（普通 node 下是 undefined）。
+ * process.windowsStore lo inyecta Electron en entornos MSIX/APPX (con node normal es undefined).
  */
 const STORE_BUILD = (() => {
   try { return !!require('electron').app?.isPackaged && !!process.windowsStore; } catch (_) { return false; }
@@ -38,147 +38,147 @@ const DEFAULT_SETTINGS = {
   adbPath: '',
   device: '127.0.0.1:5555',
   /**
-   * 驱动（兼容补丁）扩展：用户自己写的 JSON 补丁放在数据目录的 drivers/ 下。
-   * 这里只记「被用户关掉的 id」——默认全开，坏了能一键关，不用删文件。
+   * Extensión de controladores (parches de compatibilidad): los JSON de parches escritos por el usuario van en drivers/ dentro del directorio de datos.
+   * Aquí solo se registran «los id desactivados por el usuario»: por defecto todos activos; si uno se rompe, se apaga con un clic sin borrar archivos.
    */
   drivers: { state: {}, disabled: [] },
   engine: {
-    // 只有一个运行时：自带运行时（builtin）。字段保留是为了兼容老 settings.json 的合并，
-    // 读设置时会被强制写回 'builtin'（见 getSettings 的迁移）。
+    // Solo hay un runtime: el incluido (builtin). El campo se conserva por compatibilidad con la fusión de settings.json antiguos;
+    // al leer los ajustes se fuerza de nuevo a 'builtin' (véase la migración en getSettings).
     mode: 'builtin',
     qemuPath: '',
     systemImage: '',
-    memoryMB: 0,             // 0 = 由 doctor 按机器内存自动决定
-    cores: 0,                // 0 = 自动
-    autoMemory: true,        // 零配置：自动推导内存/核心/磁盘/渲染参数
+    memoryMB: 0,             // 0 = doctor decide automáticamente según la memoria de la máquina
+    cores: 0,                // 0 = automático
+    autoMemory: true,        // Cero configuración: se deducen automáticamente memoria/núcleos/disco/parámetros de renderizado
     idleShutdownMinutes: 15,
     startVisible: true,
-    // 必须带窗口：无头模式 SurfaceFlinger 不出 VSYNC，应用进程活着但屏幕上什么都没有。
-    // 带窗口的模拟器是原生 60fps + 原生鼠标键盘，ApkBuddyStart 只负责把它打扮成应用窗口。
+    // Debe haber ventana: sin ventana, SurfaceFlinger no genera VSYNC y el proceso de la app sigue vivo pero no aparece nada en pantalla.
+    // El emulador con ventana va a 60 fps nativos + ratón/teclado nativos; ApkBuddyStart solo se encarga de disfrazarlo de ventana de aplicación.
     headless: false,
-    gpuMode: 'auto',         // auto = 按 emulator 版本自动挑后端并逐级降级
-    // 上次「拉起就崩」的渲染后端（格式 `<emulator版本>|<gpu>`）；auto 模式下下次把它排到最后，
-    // 免得每次开机都先白等 20 多秒再退到软件渲染。升级运行时会自动失效。
+    gpuMode: 'auto',         // auto = elegir automáticamente el backend según la versión de emulator y degradar por niveles
+    // Último backend de renderizado que «se cayó nada más arrancar» (formato `<versión de emulator>|<gpu>`); en modo auto se pone al final la próxima vez,
+    // para no perder 20 y pico segundos en cada arranque antes de retroceder al renderizado por software. Se invalida al actualizar el runtime.
     badGpu: '',
-    forceTcg: false,         // 保留给高级排障；正常路径已由 doctor 自动回退
-    audio: true,             // 安卓应用的声音（提示音/视频）。关闭可省一点 CPU
-    // ---- 轻量容器（默认全开省资源，用户可逐项关掉）----
-    liteMode: true,          // 收敛 vCPU 配额，避免 qemu 占满物理核拖慢 Windows
-    // 一句话策略：save（省资源）/ balanced（均衡）/ smooth（流畅，视频·游戏优先）。
-    // 界面上只暴露这一个选项，保存时自动翻译成 liteMode / priorityMode / renderSize，
-    // 底部仍然保留细项开关给高级用户。
+    forceTcg: false,         // Se conserva para diagnóstico avanzado; la ruta normal ya retrocede automáticamente mediante doctor
+    audio: true,             // Sonido de las apps de Android (avisos / vídeo). Desactivarlo ahorra algo de CPU
+    // ---- Contenedor ligero (todo activo por defecto para ahorrar recursos; el usuario puede desactivar cada opción) ----
+    liteMode: true,          // Limita la cuota de vCPU para evitar que qemu ocupe todos los núcleos físicos y ralentice Windows
+    // Estrategia en una frase: save (ahorrar recursos) / balanced (equilibrado) / smooth (fluido, prioridad a vídeo y juegos).
+    // En la interfaz solo se expone esta opción; al guardar se traduce automáticamente a liteMode / priorityMode / renderSize,
+    // y abajo se conservan los interruptores finos para usuarios avanzados.
     resourceMode: 'balanced',
-    // 数据分区容量（GB）：应用、游戏缓存和它们的更新包都装在这里。
-    // 0 = 自动（按磁盘剩余给 6/8GB）。改大后在下次开安卓时**就地扩容**，不丢已装应用。
+    // Capacidad de la partición de datos (GB): aquí se instalan las apps, las cachés de juegos y sus paquetes de actualización.
+    // 0 = automático (6/8 GB según el disco libre). Al aumentarla, se amplía **in situ** en el próximo arranque de Android, sin perder las apps instaladas.
     dataPartitionGB: 0,
-    // 渲染分辨率：越低越流畅、越省电；auto = 按加速状态选 720x1280 / 540x960
+    // Resolución de renderizado: más baja = más fluida y menos consumo; auto = elegir 720x1280 / 540x960 según el estado de aceleración
     renderSize: 'auto',
-    // 网络加速：给模拟器指定国内公共 DNS。安卓默认的 10.0.2.3 要走主机 DNS，
-    // VPN / 公司网 / 某些运营商下解析会拖到几百毫秒，视频类应用首屏会明显发卡。
+    // Aceleración de red: se especifica un DNS público chino para el emulador. El 10.0.2.3 por defecto de Android pasa por el DNS del host,
+    // y con VPN / redes de empresa / algunos operadores la resolución puede tardar cientos de ms y las apps de vídeo se traban al cargar.
     fastDns: true,
-    // 系统语言：开机时由 emulator -prop 注入（guest 里 setprop 会被 SELinux 拒绝）。
-    // 默认简体中文。设成 en-US 或 off 就回到镜像原生英文。
+    // Idioma del sistema: se inyecta al arrancar con emulator -prop (un setprop dentro del guest sería rechazado por SELinux).
+    // Por defecto, chino simplificado. Poner en-US u off vuelve al inglés nativo de la imagen.
     locale: 'zh-CN',
-    // 中文输入法：随包带 AOSP 谷歌拼音输入法，开机后静默安装并启用。
-    // 系统镜像只带 LatinIME（英文键盘），不装就打不了中文。
+    // Método de entrada en chino: se incluye el teclado Pinyin de Google de AOSP y se instala/activa en silencio tras el arranque.
+    // La imagen de sistema solo trae LatinIME (teclado inglés); sin instalarlo no se puede escribir en chino.
     chineseIme: true,
     chineseImeDefault: true,
-    // 快照：quickboot 内存快照让二次启动只要几秒，代价是磁盘上多一份约 2~3GB 的
-    // ram.bin。磁盘紧张时可以关掉（只影响启动速度，不影响应用数据）。
+    // Instantánea: la instantánea de memoria de quickboot hace que el segundo arranque tarde solo unos segundos, a cambio de un
+    // ram.bin adicional de unos 2~3 GB en disco. Se puede desactivar si el disco aprieta (solo afecta a la velocidad de arranque, no a los datos).
     keepSnapshot: true,
-    // 日志上限（KB）：超过就滚动备份一份，避免长期使用把磁盘写满
+    // Límite del log (KB): al superarse se rota una copia, para evitar que el uso prolongado llene el disco
     logLimitKB: 2048,
-    // 鼠标键位：左键由模拟器原生映射为「确认/点击」，无需开关。
-    // 右键返回与平滑滚轮需要低级钩子，但只在应用窗口前台时装，失焦即卸载。
-    mouseRightBack: true,    // 右键 = 安卓返回（拦下 Qt 默认的「右键也当点击」误触）
-    mouseWheelMode: 'smooth', // smooth = 合并后注入一次滑动 | native = 交给 Qt | off = 不处理
-    mouseSideButtons: false, // 侧键返回/前进：默认关闭，开启才多装一项映射
-    deepTrim: false,         // 深度裁剪系统后台包（Play 商店/向导等），默认不动系统
-    // balanced=让出前台 | performance=qemu Normal | game=qemu High + 低延迟输入
+    // Ratón y teclas: el botón izquierdo lo mapea el emulador de forma nativa a «confirmar / clic», no necesita interruptor.
+    // El botón derecho (volver) y la rueda suave requieren un hook de bajo nivel, pero solo se instalan con la ventana de la app en primer plano y se descargan al perder el foco.
+    mouseRightBack: true,    // Botón derecho = Volver de Android (evita el fallo de Qt de tratar el clic derecho también como clic)
+    mouseWheelMode: 'smooth', // smooth = se unen y se inyecta un único desplazamiento | native = se lo deja a Qt | off = no se procesa
+    mouseSideButtons: false, // Botones laterales para atrás/adelante: desactivados por defecto; al activarlos se añade un mapeo más
+    deepTrim: false,         // Recorte profundo de paquetes de segundo plano del sistema (Play Store / asistente, etc.); por defecto no se toca el sistema
+    // balanced=ceder el primer plano | performance=qemu Normal | game=qemu High + entrada de baja latencia
   priorityMode: 'balanced',
-    // 预热：启动 ApkBuddyStart 后在后台把安卓环境引导好，第一次点应用几乎不用等。
-    // 代价是常驻约 1GB 内存（和 WSA / 应用宝电脑版一样的取舍），可随时关掉。
+    // Calentamiento previo: tras iniciar ApkBuddyStart se arranca el entorno de Android en segundo plano y la primera vez que se pulsa una app casi no hay espera.
+    // El coste es unos 1 GB de memoria residente (la misma compensación que WSA / la versión de PC de Tencent MyApp); se puede desactivar cuando se quiera.
     prewarm: true,
-    // 多窗口（B 方案）：允许同时打开多个应用、各自独立窗口。默认关闭，
-    // 保持「开新停旧」的单窗口行为；开启后靠墓碑机制回收后台，资源可控。
+    // Multiventana (plan B): permite abrir varias apps a la vez, cada una en su ventana. Desactivado por defecto,
+    // para mantener el comportamiento de ventana única «abro una y cierro la anterior»; al activarlo, el mecanismo de lápidas recicla el segundo plano y los recursos quedan controlados.
     multiWindow: false,
-    // 多窗口时保留最近几个后台应用不墓碑化（便于秒切回、不掉登录态）。
-    // 0 = 最省内存（只留前台），默认 1。
+    // En multiventana se conservan las últimas apps en segundo plano sin convertirlas en lápidas (para volver rápido sin perder la sesión).
+    // 0 = máximo ahorro de memoria (solo primer plano); por defecto 1.
     keepBackground: 1,
-    // 按键映射（游戏键盘→触屏）：默认开启，用户可在设置里关
+    // Mapeo de teclas (teclado de juego → pantalla táctil): activado por defecto; el usuario puede desactivarlo en Ajustes
     keymapEnabled: true,
-    // 每应用的按键映射表：{ "com.example.game": [{key:'w',action:'tap',x:0.15,y:0.75}, ...] }
+    // Tabla de mapeo por app: { "com.example.game": [{key:'w',action:'tap',x:0.15,y:0.75}, ...] }
     keymaps: {},
   },
   runtime: {
-    dir: '',                 // 空 = %APPDATA%\apkstart\runtime
-    qemuUrl: '',             // 手动指定 QEMU 安装包地址
-    isoUrl: '',              // 手动指定系统镜像地址
-    isoPath: '',             // 系统镜像（ISO）路径
-    diskPath: '',            // 安装系统的虚拟磁盘
+    dir: '',                 // Vacío = %APPDATA%\apkstart\runtime
+    qemuUrl: '',             // Especificar manualmente la URL del paquete de instalación de QEMU
+    isoUrl: '',              // Especificar manualmente la URL de la imagen de sistema
+    isoPath: '',             // Ruta de la imagen de sistema (ISO)
+    diskPath: '',            // Disco virtual donde se instala el sistema
     diskSizeGB: 24,
-    headless: false,         // 不显示虚拟机窗口（仅调试）
-    installMode: 'guided',   // guided（引导手动安装） | auto（实验性自动安装）
-    emulatorUrl: '',         // 手动指定 emulator 包地址（空 = 自动从 SDK 索引解析最新版）
-    sysimgUrl: '',           // 手动指定系统镜像包地址
-    compatImage: false,      // ARM 兼容模式：改用 Google Play 镜像（内置 native bridge，可装 ARM-only 应用）
-    deployFailedAt: 0,       // 上次自动部署失败的时间戳（0=无失败）。失败后 30 分钟内不再自动重下
-    // 轻量版的运行时整包：默认从本项目 GitHub Release 下载（与「软件更新」同源），
-    // 拿不到时自动退回 dl.google.com 分组件下载。可在这里换成自建镜像地址。
+    headless: false,         // No mostrar la ventana de la máquina virtual (solo para depuración)
+    installMode: 'guided',   // guided (instalación manual guiada) | auto (instalación automática experimental)
+    emulatorUrl: '',         // Especificar manualmente la URL del paquete emulator (vacío = resolver la última versión automáticamente desde el índice del SDK)
+    sysimgUrl: '',           // Especificar manualmente la URL del paquete de imagen de sistema
+    compatImage: false,      // Modo de compatibilidad ARM: usar la imagen de Google Play (con native bridge integrado, permite instalar apps solo ARM)
+    deployFailedAt: 0,       // Marca de tiempo del último fallo de despliegue automático (0 = sin fallos). Tras un fallo no se vuelve a descargar automáticamente durante 30 minutos
+    // Paquete completo de runtime de la edición portable: por defecto se descarga del GitHub Release de este proyecto (misma fuente que «Actualización de software»),
+    // y si no se puede obtener se recurre automáticamente a la descarga por componentes de dl.google.com. Aquí se puede cambiar a una URL de espejo propio.
     preferGithubRuntime: true,
     runtimePackUrl: '',
-    // GitHub 加速镜像前缀（可选）。国内直连 GitHub Releases 经常只有几十 KB/s，
-    // 填成 https://ghfast.top/ 之类的镜像前缀即可把 downloads 请求转过去。
-    // 留空 = 直连（也会先用 8 线程分块试，能跑满带宽）。
+    // Prefijo de espejo de aceleración de GitHub (opcional). La conexión directa a GitHub Releases desde China suele ir a decenas de KB/s,
+    // y basta con poner un prefijo como https://ghfast.top/ para redirigir las peticiones de downloads.
+    // Vacío = conexión directa (también se prueba primero con descarga fragmentada de 8 hilos, que puede llenar el ancho de banda).
     mirrorPrefix: '',
-    // 下载并发数：分块下载的连接数。默认 8，弱网/被限速时可调到 16。
+    // Número de conexiones concurrentes de descarga: el número de conexiones de la descarga por bloques. Por defecto 8; en redes débiles / limitadas se puede subir a 16.
     downloadConnections: 8,
-    // 更新/下载的源选择。auto = 同时问 GitHub 与 Gitee、并对每个下载地址实测
-    // 128KB 速度，谁快用谁；也可以强制只走某一边（企业网络只放行一个域名时有用）。
+    // Selección de origen para actualizaciones/descargas. auto = preguntar a la vez a GitHub y Gitee y medir la velocidad real de
+    // 128 KB de cada URL de descarga, usando el más rápido; también se puede forzar un solo origen (útil si la red corporativa solo permite un dominio).
     sourcePreference: 'auto',
-    // 自动尝试公共 GitHub 加速镜像（ghfast / gh-proxy）。关掉后只用直连 + 自定义前缀。
-    // 这两个是第三方服务，只是转发公开的 release 文件，不涉及账号信息。
+    // Probar automáticamente los espejos públicos de aceleración de GitHub (ghfast / gh-proxy). Al desactivarlo solo se usan la conexión directa + el prefijo personalizado.
+    // Estos dos son servicios de terceros que solo reenvían archivos públicos de releases, sin intervención de datos de cuenta.
     autoMirror: true,
-    // Gitee 的 releases 接口对公开仓库也要求 access_token（无 token 直接 404），
-    // 想用 Gitee 作为更新源就在这里填一个只读 token；留空则只用 GitHub + 镜像。
+    // La API de releases de Gitee exige access_token incluso para repositorios públicos (sin token da 404 directamente);
+    // para usar Gitee como origen de actualización, rellenar aquí un token de solo lectura; si se deja vacío, solo se usan GitHub + espejos.
     giteeToken: '',
   },
   sharedDir: path.join(os.homedir(), 'ApkBuddyStartShared'),
   deviceSharedDir: '/sdcard/ApkBuddyStartShared',
   autoConnect: true,
   createShortcutOnInstall: true,
-  createStartMenuShortcut: true, // 开始菜单快捷方式 = 让 Windows 搜索能搜到应用
-  shortcutDir: '',           // 空 = 桌面
-  freeform: false,           // 共享一个运行时窗口，不再用 Android freeform 小窗
-  hideAfterLaunch: false,    // 主进程必须常驻，否则一退出就把 Android 运行时杀掉了
+  createStartMenuShortcut: true, // Acceso directo del menú Inicio = permite que la búsqueda de Windows encuentre la app
+  shortcutDir: '',           // Vacío = escritorio
+  freeform: false,           // Se comparte una única ventana del runtime; ya no se usa la ventanita freeform de Android
+  hideAfterLaunch: false,    // El proceso principal debe permanecer, o al salir mataría el entorno de ejecución de Android
   notifyOnInstall: true,
-  autoStart: true,           // 开机自启，默认开启，用户无需设置
-  autoDeploy: true,          // 首次运行自动完成全部部署，不再分 1~5 步
-  // 启动欢迎卡：lastDate 记录上次自动弹出的日期（手动打开时一天最多一次），
-  // disabled = 用户勾了「不再自动弹出」。
+  autoStart: true,           // Inicio automático con Windows, activado por defecto, sin que el usuario tenga que configurarlo
+  autoDeploy: true,          // La primera ejecución completa todo el despliegue automáticamente, sin dividerlo en 5 pasos
+  // Tarjeta de bienvenida al arrancar: lastDate guarda la fecha de la última aparición automática (como máximo una al día si se abre manualmente);
+  // disabled = el usuario marcó «No volver a mostrar automáticamente».
   welcome: { lastDate: '', disabled: false },
   display: {
-    mode: 'window',          // window（竖屏窗口，可自由拉伸） | fullscreen（自动适配屏幕）
-    portrait: '900x1600',    // 窗口模式的竖屏分辨率，可在设置里调大小
-    density: 0,              // 0 = 按分辨率自动推导
-    rememberBounds: true,    // 记住每个应用的窗口位置/大小
+    mode: 'window',          // window (ventana vertical, redimensionable libremente) | fullscreen (se adapta automáticamente a la pantalla)
+    portrait: '900x1600',    // Resolución vertical del modo ventana; se puede ajustar el tamaño en Ajustes
+    density: 0,              // 0 = se deduce automáticamente de la resolución
+    rememberBounds: true,    // Recordar la posición / el tamaño de la ventana de cada app
     autoFullscreenOnLaunch: false,
-    // 横屏 = 把 AVD 物理面板换成 1280x720 并重启（唯一能得到正立+铺满的方式）。
-    // 持久化在这里，重启 ApkBuddyStart 后仍按这个方向开机。
+    // Horizontal = cambiar el panel físico del AVD a 1280x720 y reiniciar (la única forma de conseguir imagen derecha y que llene todo).
+    // Se guarda aquí, de modo que tras reiniciar ApkBuddyStart se arranca de nuevo en esa orientación.
     landscape: false,
-    // 屏幕方向策略：
-    //   auto      = 按应用自己声明的方向自动换物理面板（推荐，只有这样画面才能铺满窗口）
-    //   landscape = 强制横屏面板
-    //   portrait  = 强制竖屏面板
-    // 上面的 landscape 字段在 auto 模式下退化成「当前面板实际方向」这个事实，
-    // 由 restartForOrientation 写入，不再当偏好去覆盖应用自己的方向。
+    // Estrategia de orientación de pantalla:
+    //   auto      = cambiar automáticamente el panel físico según la orientación declarada por la app (recomendado; solo así la imagen llena la ventana)
+    //   landscape = forzar panel horizontal
+    //   portrait  = forzar panel vertical
+    // El campo landscape de arriba, en modo auto, pasa a ser un dato («orientación real actual del panel»),
+    // escrito por restartForOrientation y ya no se usa como preferencia para sobrescribir la orientación propia de la app.
     orientationMode: 'auto',
-    // 平板排版：把 guest 的逻辑密度覆盖成 190dpi（720 宽 → sw606dp ≥ 600dp，
-    // 越过 Android 的平板断点）。红果短剧这类应用只有在平板排版下才有双列剧集页，
-    // 也是用户要的「平板模式」。关掉就回到镜像默认密度（手机排版）。
+    // Diseño de tableta: se sobrescribe la densidad lógica del guest a 190 dpi (720 de ancho → sw606dp ≥ 600dp,
+    // superando el punto de corte de tableta de Android). Apps de drama corto como Hongguo solo tienen la página de episodios a dos columnas
+    // con diseño de tableta, que es lo que el usuario llama «modo tableta». Al desactivarlo se vuelve a la densidad por defecto de la imagen (diseño de móvil).
     tabletMode: true,
-    // 窗口模式：true=把安卓画面嵌进 ApkBuddyStart 自己的窗口（观感统一）；
-    // false=让模拟器开自己的原生窗口（绕开嵌入固有的黑边/坐标错位/铺不满问题）。
+    // Modo ventana: true = incrustar la imagen de Android en la ventana propia de ApkBuddyStart (aspecto unificado);
+    // false = dejar que el emulador abra su ventana nativa (evita los problemas inherentes de la incrustación: bordes negros, coordenadas desplazadas, falta de relleno).
     windowEmbed: true,
   },
 };
@@ -192,9 +192,9 @@ function ensureDirs() {
 function readJson(file, fallback) {
   try {
     let text = fs.readFileSync(file, 'utf8');
-    // 去掉可能的 UTF-8 BOM。带 BOM 时 JSON.parse 会直接抛错，于是整个配置
-    // 静默回落到默认值 —— 用户会看到「设置全丢了」，却完全不知道为什么。
-    // 这个文件会被设置页、同步工具、甚至用户手工编辑，必须容忍 BOM。
+    // Se elimina un posible BOM UTF-8. Con BOM, JSON.parse lanza un error y toda la configuración
+    // cae silenciosamente a los valores por defecto: el usuario ve «se perdieron todos mis ajustes» sin saber por qué.
+    // Este archivo lo tocan la página de ajustes, herramientas de sincronización e incluso el usuario a mano, así que debe tolerar el BOM.
     if (text.charCodeAt(0) === 0xfeff) text = text.slice(1);
     return JSON.parse(text);
   } catch (_) {
@@ -222,12 +222,12 @@ function deepMerge(base, patch) {
 }
 
 /**
- * 资源策略 → 具体开关。
- *   save     ：2 vCPU + 低优先级 + 540x960，老笔记本 / 挂机用；
- *   balanced ：vCPU 取物理核的一半（2~4）+ 让出前台 + 720x1280；
- *   smooth   ：不限制 vCPU + 与前台同优先级 + 720x1280，视频与游戏优先。
- * 分辨率先不动 1080p：quickboot 快照指纹与它绑定，改一次就要重冷启动，而 720p
- * 在手机比例的窗口里已经看不出区别，性能却差一档。
+ * Estrategia de recursos → interruptores concretos.
+ *   save     : 2 vCPU + baja prioridad + 540x960, para portátiles antiguos / dejar reposando;
+ *   balanced : la mitad de los núcleos físicos para vCPU (2~4) + ceder el primer plano + 720x1280;
+ *   smooth   : sin límite de vCPU + misma prioridad que el primer plano + 720x1280, prioridad a vídeo y juegos.
+ * De momento no se toca el 1080p: la huella de la instantánea quickboot está ligada a la resolución y cambiarla obliga a un rearranque en frío,
+ * mientras que en una ventana con proporción de móvil el 720p ya no se nota la diferencia y el rendimiento sí cambia de nivel.
  */
 function resourcePreset(mode) {
   switch (String(mode || '')) {
@@ -243,36 +243,36 @@ function resourcePreset(mode) {
 
 const store = {
   DATA_DIR, ICON_DIR, APK_DIR,
-  // 商店（MSIX）打包版标记：main.js 据此关掉自更新、跳过需要管理员权限的内核驱动安装
+  // Marca de la versión empaquetada de Store (MSIX): main.js la usa para desactivar la autoactualización y omitir la instalación de controladores de kernel que requieren permisos de administrador
   STORE_BUILD,
 
   getSettings() {
     const s = deepMerge(DEFAULT_SETTINGS, readJson(SETTINGS_FILE, {}));
     /**
-     * 0.5.6 起没有第三方底座了：老配置里的 mode=mumu / fydeos / attach，
-     * 或者手改出来的任何其它值，一律当 builtin 处理，并把残留的第三方字段删掉。
+     * Desde la 0.5.6 ya no hay bases de terceros: los valores antiguos mode=mumu / fydeos / attach,
+     * o cualquier otro valor escrito a mano, se tratan siempre como builtin y se borran los campos residuales de terceros.
      *
-     * 只在读的时候改内存里的对象，不立刻回写磁盘：设置文件是用户的，等他下次
-     * 保存设置时自然落盘；这样「打开一次 ApkBuddyStart 就改了他的 settings.json」不会发生。
+     * Solo se cambia el objeto en memoria al leer, sin escribir en disco de inmediato: el archivo de ajustes es del usuario;
+     * ya se guardará la próxima vez que guarde sus ajustes. Así no ocurre eso de «abrir ApkBuddyStart una vez y haber modificado su settings.json».
      */
     s.engine.mode = 'builtin';
     for (const k of ['mumuPath', 'mumuIndex', 'mumuRenderProfile', 'mumuMemoryGB', 'mumuCores', 'fydeosHost']) {
       delete s.engine[k];
     }
-    // 旧版本默认无头运行：应用进程能起来但屏幕上没有窗口，等效于「打不开」。
-    // 无条件迁移到带窗口模式，且不再允许通过旧配置把它关掉。
+    // Las versiones antiguas funcionaban sin ventana por defecto: el proceso de la app arrancaba pero no había ventana en pantalla, equivalente a «no se abre».
+    // Se migra incondicionalmente al modo con ventana y ya no se permite desactivarlo mediante la configuración antigua.
     s.engine.headless = false;
-    // 旧版本退出壳层时会杀掉整个 Android 运行时，导致桌面图标点开闪一下就没了。
+    // Las versiones antiguas mataban todo el entorno de Android al cerrar el shell, de modo que el icono del escritorio parpadeaba y desaparecía.
     s.hideAfterLaunch = false;
-    // 旧版本用 Android freeform 小窗，现在整个模拟器窗口就是应用窗口，
-    // 应用必须铺满这块屏幕，否则会出现「窗口里再套一个小窗」。
+    // Las versiones antiguas usaban la ventanita freeform de Android; ahora toda la ventana del emulador es la ventana de la app,
+    // y la app debe llenar esa pantalla, o aparecería «una ventanita dentro de la ventana».
     s.freeform = false;
     return s;
   },
 
   saveSettings(patch) {
     const next = deepMerge(this.getSettings(), patch);
-    // 只改了「资源策略」时，把它翻译成具体的三个开关，避免两套配置各说各话
+    // Cuando solo cambió la «estrategia de recursos», se traduce a los tres interruptores concretos para que dos configuraciones no se contradigan
     if (patch && patch.engine && patch.engine.resourceMode) {
       Object.assign(next.engine, resourcePreset(next.engine.resourceMode));
     }
@@ -308,8 +308,8 @@ const store = {
   },
 
   iconPath(pkg) {
-    // 第二层防御：pkg 来自外部解析的 APK / apps.json，必须锁在数据目录内。
-    // 即使有旧版本写入的坏记录，也不能让它拼出 ICON_DIR 之外的路径（issue #2 P0-1）。
+    // Segunda línea de defensa: pkg viene de un APK / apps.json analizado externamente y debe quedar confinado al directorio de datos.
+    // Aunque haya un registro malo escrito por una versión anterior, no se le debe permitir componer una ruta fuera de ICON_DIR (issue #2 P0-1).
     return path.join(ICON_DIR, `${safeFilePart(pkg)}.png`);
   },
 

@@ -1,16 +1,18 @@
 'use strict';
 /**
- * 底座：自带的 Google Android Emulator（QEMU 全系统虚拟化）
+ * Base: el Google Android Emulator incluido (virtualización completa del sistema con QEMU)
  *
- * 这是 ApkBuddyStart 的默认底座，也是唯一「完全自持」的底座：
- * adb / emulator / 系统镜像都由 ApkBuddyStart 自己下载和管理，不依赖用户机器上
- * 已经装了什么模拟器。
+ * Es la base predeterminada de ApkBuddyStart y la única «totalmente autosuficiente»:
+ * adb / emulator / imagen del sistema los descarga y gestiona el propio ApkBuddyStart,
+ * sin depender de qué emulador tenga ya instalado el usuario.
  *
- * 真正的实现在 core/engine.js（Runtime）与 core/emulator.js（EmulatorEngine）里，
- * 本文件只做一层薄适配，把它们的接口翻译成本层约定，这样上层不需要知道
- * 自研底座内部有多复杂。
+ * La implementación real está en core/engine.js (Runtime) y core/emulator.js (EmulatorEngine);
+ * este archivo solo hace una capa de adaptación delgada, traduciendo sus interfaces a las
+ * convenciones de esta capa, para que la capa superior no necesite saber lo complejo que es
+ * la base propia internamente.
  *
- * 注意：这个后端依赖 Runtime 实例，构造时通过 deps.runtime 注入。
+ * Nota: este backend depende de la instancia de Runtime, que se inyecta en el constructor
+ * mediante deps.runtime.
  */
 const fs = require('fs');
 const path = require('path');
@@ -42,9 +44,10 @@ class BuiltinBackend extends Backend {
     ]);
   }
 
-  // serial 用可写字段而不是 getter：基类构造函数里会 `this.serial = ''`，
-  // 若在这里定义 getter，赋值会直接抛 TypeError（原型上的 getter 不可写）。
-  // 需要实时值时由 ensure() 主动从 Runtime 取一次写进来。
+  // serial se implementa como campo escribible y no como getter: el constructor de la clase base
+  // hace `this.serial = ''`; si definimos un getter aquí, esa asignación lanzaría TypeError
+  // (un getter en el prototipo no es escribible). Cuando se necesita el valor en tiempo real,
+  // ensure() lo obtiene del Runtime y lo escribe aquí.
   syncSerial() {
     if (this.rt) this.serial = this.rt.emuSerial || '';
     return this.serial;
@@ -75,7 +78,7 @@ class BuiltinBackend extends Backend {
     if (!this.rt) return { ok: false, error: 'Entorno no inicializado' };
     const r = await this.rt.ensure({ onLog });
     if (!r || !r.ok) return { ok: false, error: (r && r.error) || 'El entorno Android no pudo iniciarse' };
-    // serial 用可写字段（见 syncSerial 的说明），ensure 成功后同步一次
+    // serial es un campo escribible (véase la nota de syncSerial); sincronizar una vez tras ensure correcto
     this.syncSerial();
     this.adbPath = this.rt.adbPath();
     return {
@@ -84,15 +87,17 @@ class BuiltinBackend extends Backend {
   }
 
   /**
-   * 自带 emulator 的画面窗口不给候选句柄：它按进程目录作用域由 WinAgent 的
-   * FindEmulator() 找（见 core/win/agent.ps1），这样即使窗口标题变了也不会认错。
+   * La ventana de imagen del emulator incluido no ofrece identificadores candidatos: WinAgent la
+   * encuentra con FindEmulator() según el ámbito del directorio del proceso (véase core/win/agent.ps1),
+   * de modo que no haya confusiones aunque cambie el título de la ventana.
    */
   async windowTargets() { return []; }
 
   /**
-   * 画面窗口是否已经嵌进宿主。
-   * isEmbedded 由 WinAgent 注入（问 agent.ps1 当前 _emu 的父窗口是不是宿主），
-   * 没注入时保守返回 true：自带底座一直走老路径，不需要这块门禁。
+   * Si la ventana de imagen ya está incrustada en el host.
+   * isEmbedded lo inyecta WinAgent (pregunta a agent.ps1 si el padre actual de _emu es el host);
+   * si no se inyecta, se devuelve true de forma conservadora: la base incluida siempre usa la ruta
+   * antigua y no necesita esta comprobación.
    */
   async windowReady({ isEmbedded } = {}) {
     if (typeof isEmbedded !== 'function') return { ok: true };
@@ -125,9 +130,10 @@ class BuiltinBackend extends Backend {
   dataInfo() { return this.rt ? this.rt.emulator.dataInfo() : { ok: false }; }
 
   /**
-   * 设置页展示用：宿主上限 + 当前分配。
-   * 自带运行时的内存/CPU 是写进 qemu 命令行的，改完下次开安卓生效；
-   * 数据分区可以就地扩容（resizeData），不丢已装应用。
+   * Para mostrar en la página de ajustes: límites del host + asignación actual.
+   * La memoria/CPU del runtime incluido se escribe en la línea de comandos de qemu; los cambios
+   * se aplican la próxima vez que arranque Android. La partición de datos se puede ampliar in situ
+   * (resizeData) sin perder las aplicaciones instaladas.
    */
   resources() {
     const info = this.dataInfo() || {};
@@ -155,9 +161,10 @@ class BuiltinBackend extends Backend {
   }
 
   /**
-   * 大包预检：除了物理磁盘，还要看 /data 分区本身够不够。
-   * 50GB 级游戏装不下的最常见原因不是下载失败，而是 userdata 镜像还是
-   * 默认的 6/8GB —— 装到 dexopt 阶段才报 INSTALL_INSUFFICIENT_STORAGE。
+   * Comprobación previa de paquetes grandes: además del disco físico, hay que ver si la partición
+   * /data misma tiene espacio suficiente. La causa más común de que no quepan juegos de 50 GB no es
+   * un fallo de descarga, sino que la imagen userdata sigue siendo la predeterminada de 6/8 GB:
+   * el error INSTALL_INSUFFICIENT_STORAGE no aparece hasta la fase de dexopt.
    */
   checkDiskFor(bytes) {
     const info = this.dataInfo() || {};
@@ -180,7 +187,7 @@ class BuiltinBackend extends Backend {
   async resetData() { return this.rt ? this.rt.resetAndroidData() : { ok: false }; }
 
   dispose() {
-    // 交给 Runtime.dispose()：它会保留 qemu 进程，下次启动可以直接接管
+    // Se delega a Runtime.dispose(): conserva el proceso qemu para poder retomarlo en el próximo arranque
   }
 
   diagnose() {

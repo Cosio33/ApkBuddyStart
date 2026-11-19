@@ -1,18 +1,18 @@
 'use strict';
 /**
- * 双源（GitHub / Gitee）+ 镜像前缀的统一下载来源管理。
+ * Gestión unificada de orígenes de descarga: doble fuente (GitHub / Gitee) + prefijos de espejo.
  *
- * 国内直连 GitHub 有两个坑：
- *   1. api.github.com 经常几十秒才响应，甚至直接超时 —— 表现是「检查更新转圈」；
- *   2. 资产下载（objects.githubusercontent.com）单连接限速，常在 100KB/s 上下 ——
- *      1.5 GB 的运行时包要下 4 个小时。
+ * Conectar directamente a GitHub desde China tiene dos trampas:
+ *   1. api.github.com a menudo tarda decenas de segundos en responder, o incluso agota el tiempo — el síntoma es «el check de actualización se queda girando»;
+ *   2. La descarga de assets (objects.githubusercontent.com) limita cada conexión, normalmente a unos 100 KB/s —
+ *      el paquete de runtime de 1,5 GB tardaría 4 horas.
  *
- * 所以这里不预设「谁是主源」，而是每次用真实字节测速：
- *   - 版本信息：GitHub / Gitee 两边**并发**问，谁先给出更高版本用谁的；
- *   - 下载地址：把「GitHub 直连 / Gitee 同名资产 / 镜像前缀拼接」全部列出来，
- *     每个地址真下 128KB，按实测速度排序，取最快的那个。
+ * Así que aquí no se asume «quién es el origen principal», sino que se mide con bytes reales cada vez:
+ *   - Info de versión: se pregunta a GitHub / Gitee **en concurrencia** y se usa quien dé primero una versión más alta;
+ *   - URLs de descarga: se enumeran «GitHub directo / asset homónimo en Gitee / prefijo de espejo»,
+ *     se descargan 128 KB reales de cada una, se ordenan por velocidad medida y se toma la más rápida.
  *
- * 测速结果在内存里缓存 30 分钟（同一进程内反复检查更新/下多个组件不必重复测）。
+ * El resultado de la medición se cachea en memoria 30 minutos (las comprobaciones repetidas en el mismo proceso no vuelven a medir).
  */
 const https = require('https');
 const http = require('http');
@@ -38,16 +38,16 @@ const SOURCES = {
   },
 };
 
-/** 已知可用的 GitHub 加速前缀。只在用户开启 autoMirror 且未自定义时参与测速。 */
+/** Prefijos de aceleración de GitHub conocidos y funcionando. Solo participan en la medición si el usuario activa autoMirror y no ha definido uno propio. */
 const KNOWN_MIRRORS = [
   'https://ghfast.top/',
   'https://gh-proxy.com/',
 ];
 
 /**
- * 一次测速的采样字节数。
- * 128KB 太小：握手 + TLS 就有几百毫秒，测出来的「速度」其实主要在测延迟，
- * 会把「延迟高但带宽大」的源误判成慢。256KB 能把两者分开，流量也可以接受。
+ * Número de bytes muestreados por medición.
+ * 128 KB es demasiado poco: el handshake + TLS ya son cientos de ms, y la «velocidad» medida es sobre todo latencia,
+ * lo que marca como lento un origen con mucha latencia pero gran ancho de banda. 256 KB separa ambas cosas y el tráfico es asumible.
  */
 const SAMPLE_BYTES = 256 * 1024;
 
@@ -80,7 +80,7 @@ function openUrl(url, { timeout = 10000, headers = {}, redirects = 0, followRedi
   });
 }
 
-/** 取一小段 JSON（带重定向、超时、大小上限） */
+/** Obtener un pequeño fragmento de JSON (con redirecciones, tiempo de espera y límite de tamaño) */
 async function getJson(url, timeout = 10000) {
   const res = await openUrl(url, { timeout });
   if (res.statusCode < 200 || res.statusCode >= 300) {
@@ -102,7 +102,7 @@ async function getJson(url, timeout = 10000) {
 }
 
 /**
- * 真下载一小段字节来测速度。
+ * Descargar un pequeño fragmento real de bytes para medir la velocidad.
  * @returns {Promise<{url:string, ok:boolean, speed:number, got:number, ms:number, error?:string}>}
  */
 function measure(url, { bytes = SAMPLE_BYTES, timeoutMs = 9000 } = {}) {
@@ -117,8 +117,8 @@ function measure(url, { bytes = SAMPLE_BYTES, timeoutMs = 9000 } = {}) {
       settled = true;
       try { req?.destroy(); } catch (_) { /* ignore */ }
       const now = Date.now();
-      // 吞吐只算「开始收到字节之后」的时间：TLS 握手 + DNS 那几百毫秒是固定开销，
-      // 对 1.4GB 的包几乎不影响总耗时，混进速度里会把判断带偏。
+      // El rendimiento solo se calcula desde «que empiezan a llegar bytes»: los cientos de ms del handshake TLS + DNS son un coste fijo,
+      // casi no afectan al total en un paquete de 1,4 GB, y mezclarlos en la velocidad sesga el juicio.
       const span = Math.max(1, now - (firstAt || t0));
       resolve({
         url,
@@ -149,14 +149,14 @@ function measure(url, { bytes = SAMPLE_BYTES, timeoutMs = 9000 } = {}) {
         got += c.length;
         if (got >= bytes) { clearTimeout(timer); done(true); }
       });
-      // 资产本身比样本还小：读到 EOF 也算成功
+      // El propio asset es más pequeño que la muestra: llegar a EOF también cuenta como éxito
       res.on('end', () => { clearTimeout(timer); done(got > 0); });
       res.on('error', (e) => { clearTimeout(timer); done(false, e.message); });
     }).catch((e) => { clearTimeout(timer); done(false, e.message); });
   });
 }
 
-/** 把 GitHub 资产地址套上镜像前缀 */
+/** Aplicar el prefijo de espejo a una URL de asset de GitHub */
 function withMirror(url, prefix) {
   if (!prefix || !/^https?:\/\//i.test(prefix)) return '';
   const p = prefix.endsWith('/') ? prefix : `${prefix}/`;
@@ -164,10 +164,10 @@ function withMirror(url, prefix) {
 }
 
 /**
- * Gitee 发行版附件单文件上限 100MB，安装包 105~110MB 装不下，所以发布时切成
- * xxx.zip.part1 / xxx.zip.part2。这里把分片还原成一个逻辑资产：
- *   { name: 'xxx.zip', size: 总和, parts: [{index, size, urls:[...]}] }
- * 分片必须从 part1 开始连续，否则视为残缺、丢弃（宁可用整包，也不下一个坏包）。
+ * Los archivos adjuntos de releases de Gitee tienen un límite de 100 MB por archivo y el instalador de 105~110 MB no cabe, así que al publicar se corta en
+ * xxx.zip.part1 / xxx.zip.part2. Aquí se reconstruyen los fragmentos en un único asset lógico:
+ *   { name: 'xxx.zip', size: suma total, parts: [{index, size, urls:[...]}] }
+ * Los fragmentos deben ser consecutivos desde part1; si no, se considera incompleto y se descarta (mejor usar el paquete entero que bajar uno roto).
  */
 function groupParts(assets) {
   const groups = new Map();
@@ -195,15 +195,15 @@ function groupParts(assets) {
     g.parts.sort((x, y) => x.index - y.index);
     const contiguous = g.parts.every((p, i) => p.index === i + 1);
     g.size = g.parts.reduce((n, p) => n + (Number(p.size) || 0), 0);
-    // 注意：Gitee 的发行版资产条目只有 name/url，**没有 size**。
-    // 以「size>0」作为完整性条件会把整组分片判成残缺而丢弃（实测踩过），
-    // 所以这里只要求「分片连续 + 每个分片有地址」；大小未知时进度按已收字节显示。
+    // Ojo: las entradas de assets de releases de Gitee solo traen name/url, **sin size**.
+    // Exigir «size>0» como condición de integridad descartaría todo el grupo de fragmentos (tropezado en la práctica),
+    // así que aquí solo se pide «fragmentos consecutivos + cada fragmento con dirección»; si se desconoce el tamaño, el progreso se muestra por bytes recibidos.
     if (!contiguous || !g.parts.every((p) => p.urls.length)) g.broken = true;
   }
   return { list: out.filter((a) => !a.broken), broken: [...groups.values()].filter((g) => g.broken).map((g) => g.name) };
 }
 
-/** mirrors 列表：用户自定义优先，其次内置（autoMirror 关掉就只用自定义的） */
+/** Lista de mirrors: primero los definidos por el usuario, luego los integrados (con autoMirror desactivado se usan solo los del usuario) */
 function mirrorList(settings) {
   const r = (settings && settings.runtime) || {};
   const custom = String(r.mirrorPrefix || process.env.APKSTART_MIRROR || '').trim();
@@ -217,32 +217,32 @@ class Sources {
     this.settings = typeof settingsFn === 'function' ? settingsFn : () => ({});
     this._rankCache = new Map();   // url -> {at, speed, ok}
     this._rankTtl = 30 * 60 * 1000;
-    // 版本检查结果缓存：Gitee 的匿名调用限流很紧（连续几次就 403），
-    // 而「有没有新版本」本来也不需要秒级新鲜度。
+    // Caché del resultado de comprobación de versión: la API anónima de Gitee limita muy fuerte (tras unas pocas llamadas seguidas da 403),
+    // y «si hay versión nueva» tampoco necesita frescura de segundos.
     this._relCache = { at: 0, key: '', value: null };
     this._relTtl = 10 * 60 * 1000;
-    // 熔断：某个源被限流/报错后，一段时间内直接跳过它，不再每次启动都撞墙
+    // Circuit breaker: cuando un origen se ve limitado / da error, se salta durante un tiempo en vez de chocar contra él en cada arranque
     this._blocked = new Map();     // sourceId -> until(ms)
     this._blockMs = 15 * 60 * 1000;
   }
 
-  /** 该源是否处于熔断期；返回 null 表示可用，否则返回给用户看的原因 */
+  /** ¿Está este origen en periodo de corte? Devuelve null si está disponible; si no, el motivo para mostrar al usuario */
   blockedReason(id) {
     const until = this._blocked.get(id) || 0;
     if (until <= Date.now()) return null;
     return `Se omite temporalmente (${Math.ceil((until - Date.now()) / 60000)} minutos sin volver a intentarlo)`;
   }
 
-  /** 各源的最新 release（并发，任何一个失败都不影响另一个） */
+  /** Último release de cada origen (en concurrencia; el fallo de uno no afecta al otro) */
   /**
-   * 不依赖 API 的兜底：直接跟随 `/releases/latest` 的 302 拿到 tag。
+   * Respaldo sin API: seguir directamente el 302 de `/releases/latest` para obtener el tag.
    *
-   * 为什么必须有这一条：GitHub 的匿名 API 每个 IP 每小时只有 60 次，
-   * Gitee 的匿名 API 更紧（实测连点几次就 403 Rate Limit Exceeded）。
-   * 公司/校园网、运营商 NAT 出口下，用户很容易「检查更新失败」——
-   * 而 `releases/latest` 这个网页跳转是走 CDN 的，不消耗 API 额度。
+   * Por qué tiene que existir: la API anónima de GitHub solo permite 60 llamadas por IP y hora,
+   * y la de Gitee es aún más estricta (en pruebas, unos pocos clics seguidos dan 403 Rate Limit Exceeded).
+   * Tras un NAT de empresa/campus o de operador, es fácil que el usuario vea «falló la comprobación de actualización»,
+   * mientras que el salto de la página `releases/latest` va por CDN y no consume cuota de API.
    *
-   * 拿到 tag 之后资产名可以按发布约定拼出来：
+   * Con el tag en mano, los nombres de asset se componen según la convención de publicación:
    *   ApkBuddyStart-<tag>-win64-portable.zip / ApkBuddyStart-<version>-Setup.exe / ApkBuddyStart-runtime-<tag>.zip
    */
   async _releaseTagViaRedirect(id) {
@@ -255,7 +255,7 @@ class Sources {
     return m ? decodeURIComponent(m[1]) : '';
   }
 
-  /** 用 tag 拼一份「最小可用」的 release（没有 API 时用） */
+  /** Componer un release «mínimamente usable» a partir del tag (cuando no hay API) */
   _syntheticRelease(id, tag) {
     const s = SOURCES[id];
     const ver = String(tag).replace(/^v/i, '');
@@ -264,10 +264,10 @@ class Sources {
       `ApkBuddyStart-${ver}-Setup.exe`,
       `ApkBuddyStart-runtime-${tag}.zip`,
     ];
-    // GitHub 和 Gitee 都支持 /releases/download/<tag>/<文件名> 这种规范地址
-    // （实测 Gitee 会 302 到 foruda.gitee.com 的附件地址，能正常下到完整字节），
-    // 所以没有 API 时也能拼出可用的下载地址。Gitee 上没有的资产会 404，
-    // 后面的测速排序会自动跳过它。
+    // Tanto GitHub como Gitee admiten la URL canónica /releases/download/<tag>/<nombre de archivo>
+    // (en pruebas Gitee hace 302 a los adjuntos de foruda.gitee.com y se bajan los bytes completos),
+    // así que sin API también se pueden componer URLs de descarga válidas. Los assets que no existen en Gitee dan 404,
+    // y el ordenamiento por velocidad posterior los salta automáticamente.
     const assets = names.map((n) => ({
       name: n,
       size: 0,
@@ -287,9 +287,9 @@ class Sources {
   async fetchReleases() {
     const prefs = String((this.settings().runtime || {}).sourcePreference || 'auto');
     const ids = prefs === 'github' || prefs === 'gitee' ? [prefs] : ['github', 'gitee'];
-    // 公开仓库的 releases 接口匿名就能读；仓库若是私有的，Gitee 会回 404
-    // "Not Found Project"（而不是 401），那种情况才需要在这里填一个只读 token。
-    // 另外匿名调用有频率限制，感兴趣的用户可以填 token 提高额度。
+    // La API de releases de repositorios públicos se puede leer de forma anónima; si el repo es privado, Gitee responde 404
+    // "Not Found Project" (no 401), y solo en ese caso hace falta rellenar aquí un token de solo lectura.
+    // Además, las llamadas anónimas tienen límite de frecuencia; los usuarios interesados pueden poner un token para ampliarlo.
     const token = String((this.settings().runtime || {}).giteeToken || '').trim();
     const withToken = (id, url) => (id === 'gitee' && token
       ? `${url}${url.includes('?') ? '&' : '?'}access_token=${encodeURIComponent(token)}`
@@ -303,19 +303,19 @@ class Sources {
         const rel = await getJson(withToken(id, `${s.api}/releases/latest`), 9000);
         return { source: id, name: s.name, web: s.web, rel };
       } catch (e) {
-        // Gitee 没有正式 release、或 GitHub 被墙，都退回列表取第一条
+        // Si Gitee no tiene un release formal o GitHub está bloqueado, se vuelve a la lista y se toma el primero
         try {
           const list = await getJson(withToken(id, `${s.api}/releases?per_page=10`), 9000);
           const first = (Array.isArray(list) ? list : []).find((r) => r && !r.draft);
           if (first) return { source: id, name: s.name, web: s.web, rel: first };
-        } catch (_) { /* 继续尝试不依赖 API 的兜底 */ }
-        // API 被限流/被墙时的兜底：网页跳转拿 tag，资产名按约定拼
+        } catch (_) { /* Se sigue probando el respaldo sin API */ }
+        // Respaldo cuando la API está limitada / bloqueada: el salto de la página da el tag y los nombres de asset se componen por convención
         try {
           const tag = await this._releaseTagViaRedirect(id);
           if (tag) {
             return { source: id, name: s.name, web: s.web, rel: this._syntheticRelease(id, tag), degraded: true };
           }
-        } catch (_) { /* 兜底也不行 */ }
+        } catch (_) { /* El respaldo tampoco funciona */ }
         const limited = /\b(403|429)\b/.test(e.message);
         if (limited) this._blocked.set(id, Date.now() + this._blockMs);
         const hint = limited
@@ -328,8 +328,8 @@ class Sources {
   }
 
   /**
-   * 合并两边的最新版本：版本号更高的胜出，但**资产列表取并集**，
-   * 这样即使 Gitee 只放了元数据、资产在 GitHub，也能两条路都试。
+   * Combinar las últimas versiones de ambos lados: gana la versión más alta, pero **la lista de assets se une**,
+   * para que incluso si Gitee solo pone metadatos y los assets están en GitHub, se puedan probar las dos vías.
    */
   async latest({ force = false } = {}) {
     const pref = String((this.settings().runtime || {}).sourcePreference || 'auto');
@@ -338,8 +338,8 @@ class Sources {
       return cached.value;
     }
     const all = await this.fetchReleases();
-    // 被限流的源记入熔断（放在这里而不是 fetchReleases 内部，是为了让「谁来提供
-    // 结果」这件事可被替换/测试，同时保证任何入口拿到的 403 都会触发熔断）
+    // El origen limitado se registra en el circuit breaker (se hace aquí y no dentro de fetchReleases para que «quién aporta
+    // el resultado» se pueda sustituir/probar, y para garantizar que cualquier 403 de cualquier entrada dispare el corte)
     for (const x of all) {
       if (x && x.error && /\b(403|429)\b/.test(x.error)) {
         this._blocked.set(x.source, Date.now() + this._blockMs);
@@ -348,8 +348,8 @@ class Sources {
     const ok = all.filter((x) => x && x.rel);
     if (!ok.length) {
       const why = all.map((x) => `${x.name || x.source}: ${x.error || 'Sin datos'}`).join('；');
-      // 全挂了但手里有上一次的结果：宁可给一份「可能是旧的」版本信息，
-      // 也不要让界面直接报错 —— 用户至少还能看到当前版本和发布页入口。
+      // Si todo falló pero tenemos el resultado anterior: mejor dar una info de versión «quizá antigua»
+      // que dejar que la interfaz muestre un error directamente — al menos el usuario ve la versión actual y el enlace a la página de releases.
       if (cached.value) return { ...cached.value, stale: true, staleReason: why };
       throw new Error(`No se puede conectar con el servidor de actualizaciones (${why}）`);
     }
@@ -358,8 +358,8 @@ class Sources {
     const tag = String(top.rel.tag_name || top.rel.name || '');
     const version = tag.replace(/^v/i, '');
 
-    // 只有同版本的资产才算数（不同源的旧版本资产不能拿来装）。
-    // 同名整包 + 分片组同时存在时优先用整包：分片要拼装，多一个失败点。
+    // Solo cuentan los assets de la misma versión (no se pueden usar assets de versiones antiguas de otro origen para instalar).
+    // Si coexisten el paquete completo y el grupo de fragmentos con el mismo nombre, se prefiere el completo: los fragmentos requieren ensamblaje, un punto de fallo más.
     let raw = [];
     for (const item of ok) {
       const t = String(item.rel.tag_name || item.rel.name || '').replace(/^v/i, '');
@@ -367,9 +367,9 @@ class Sources {
       for (const a of (item.rel.assets || [])) {
         const key = String(a.name || '');
         if (!key) continue;
-        // Gitee 会把「源码包」自动挂成资产（v0.3.2.zip / v0.3.2.tar.gz），
-        // 这些不是安装包，`\.zip$` 的匹配规则会把它当成更新包下载下来 —— 必须排除。
-        // 我们自己的发布资产统一以 ApkBuddyStart 开头，按这个前缀白名单更安全。
+        // Gitee cuelga automáticamente los «paquetes de código fuente» como assets (v0.3.2.zip / v0.3.2.tar.gz),
+        // que no son instaladores y la regla `\.zip$` los descargaría como paquete de actualización — hay que excluirlos.
+        // Los assets de nuestras publicaciones empiezan todos por ApkBuddyStart; usar esa lista blanca de prefijo es más seguro.
         if (!/^ApkBuddyStart/i.test(key)) continue;
         raw.push({
           name: key,
@@ -383,11 +383,11 @@ class Sources {
     const wholeNames = new Set(grouped.list.filter((a) => !a.partial).map((a) => a.name));
     raw = grouped.list.filter((a) => !(a.partial && wholeNames.has(a.name)));
 
-    // 同名资产两个源都有（整包不再切分片以后就是这种常态）：把地址都留着当候选。
-    // 以前是「按名字去重、谁先来用谁」—— GitHub 排在前面，Gitee 的地址就被丢掉了，
-    // 「自动选网络更好的源」实际退化成只走 GitHub。现在按实测速度挑（见 rank()）。
-    // 每个地址的大小单独记：两个源的包不是同一份字节（压缩器/构建机不同，能差几 MB），
-    // downloadMulti 只会混用「声明总大小一致」的地址，所以绝不能把两者的大小平均掉。
+    // El mismo asset está en los dos orígenes (ahora que el paquete completo no se fragmenta es lo normal): se conservan todas las direcciones como candidatas.
+    // Antes se «deducía por nombre y se usaba la primera» — como GitHub iba primero, la dirección de Gitee se perdía,
+    // y «elegir automáticamente el origen con mejor red» degeneraba en usar solo GitHub. Ahora se elige por velocidad real (véase rank()).
+    // El tamaño de cada dirección se guarda por separado: los paquetes de los dos orígenes no son los mismos bytes (compresor/máquina de build distinta, pueden diferir varios MB),
+    // y downloadMulti solo mezcla direcciones que declaran el mismo tamaño total, así que jamás se debe promediar el tamaño de ambos.
     const assets = [];
     const byName = new Map();
     for (const a of raw) {
@@ -421,12 +421,12 @@ class Sources {
   }
 
   /**
-   * 某个资产在所有源 + 镜像下的候选地址（去重、保序：源站优先，其次镜像）。
-   * 镜像只套在 GitHub 的地址上：ghfast / gh-proxy 只代理 GitHub，
-   * 把 Gitee 的链接拼上去只会得到一个 403，白白多测一次速。
+   * Direcciones candidatas de un asset en todos los orígenes + espejos (sin duplicados y en orden: primero el sitio original, luego los espejos).
+   * Los espejos solo se aplican a direcciones de GitHub: ghfast / gh-proxy solo proxyan GitHub,
+   * y concatenar el enlace de Gitee solo produce un 403, una medición de velocidad desperdiciada.
    */
   candidates(assetOrUrl) {
-    // 支持三种入参：单个地址、资产对象（url）、合并后的资产对象（urls 数组，含两个源）
+    // Admite tres formas de entrada: una sola dirección, un objeto asset (url) o un objeto asset combinado (array urls con dos orígenes)
     const urls = (typeof assetOrUrl === 'string'
       ? [assetOrUrl]
       : (assetOrUrl && (assetOrUrl.urls && assetOrUrl.urls.length ? assetOrUrl.urls : [assetOrUrl.url])))
@@ -450,8 +450,8 @@ class Sources {
   }
 
   /**
-   * 按实测速度排序候选地址。测速结果缓存 30 分钟；
-   * 全部测速失败就退回原始顺序（保证「最坏情况还是能下」）。
+   * Ordenar las direcciones candidatas por velocidad medida. La medición se cachea 30 minutos;
+   * si todas fallan, se vuelve al orden original (para garantizar que «en el peor caso todavía se puede descargar»).
    */
   async rank(urls, { onProgress } = {}) {
     const list = (urls || []).filter(Boolean);
@@ -464,15 +464,15 @@ class Sources {
     }
     if (need.length) {
       onProgress?.({ stage: 'probe', message: `Probando velocidad ${need.length} fuentes de descarga…` });
-      // 顺序测而不是并发测：并发会互相抢带宽，测出来的名次变成「谁抢得凶」，
-      // 而不是「谁真的快」。每个源 256KB，正常也就一秒左右。
-      // 单个源最多等 6 秒就放弃（旧版 9 秒 × 4 个源 = 最长 36 秒没有任何字节进度，
-      // 用户看到的就是「卡在准备运行时」）；测速失败只会排到最后，不影响能下载。
+      // Se mide en serie y no en concurrencia: en paralelo se roban ancho de banda entre sí y el ranking pasa a ser «quien más fuerte empuja»,
+      // no «quien es realmente más rápido». 256 KB por origen, normalmente unos segundos.
+      // Un solo origen se abandona tras 6 s como máximo (antes 9 s × 4 orígenes = hasta 36 s sin ningún byte de progreso,
+      // y el usuario ve «se quedó en Preparando el runtime»); un fallo en la medición solo lo coloca al final, no impide descargar.
       let i = 0;
       for (const u of need) {
         i += 1;
         let host = u;
-        try { host = new URL(u).host; } catch (_) { /* 地址不合法就原样显示 */ }
+        try { host = new URL(u).host; } catch (_) { /* Dirección no válida, se muestra tal cual */ }
         onProgress?.({ stage: 'probe', message: `Probando la velocidad de la fuente ${i}/${need.length} fuentes:${host}…` });
         // eslint-disable-next-line no-await-in-loop
         const r = await measure(u, { timeoutMs: 6000 });
@@ -495,7 +495,7 @@ class Sources {
     return sorted;
   }
 
-  /** 测速缓存清空（用户改了镜像前缀 / 换了网络后调用） */
+  /** Vaciar la caché de medición (se llama cuando el usuario cambia el prefijo de espejo / cambia de red) */
   reset() {
     this._rankCache.clear();
     this._relCache = { at: 0, key: '', value: null };

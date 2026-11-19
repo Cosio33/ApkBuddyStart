@@ -1,11 +1,11 @@
 'use strict';
 /**
- * resources.arsc 解析器（精简版）
- * 用途：把 AndroidManifest 里的 @0x7f... 资源引用还原成
- *       应用名（字符串）和图标文件路径（res/... 下的 png）。
+ * Analizador de resources.arsc (versión reducida)
+ * Uso: convertir las referencias a recursos @0x7f... del AndroidManifest en
+ *      el nombre de la aplicación (cadena) y la ruta del archivo de icono (png bajo res/...).
  *
- * 只解析 ResTable / ResTable_package / ResTable_type 三层结构，
- * 足以覆盖 99% 的应用名与图标场景。
+ * Solo analiza las tres capas ResTable / ResTable_package / ResTable_type, suficiente para
+ * cubrir el 99 % de los casos de nombres e iconos de aplicaciones.
  */
 
 const RES_TABLE_TYPE = 0x0002;
@@ -61,14 +61,14 @@ function parseConfig(buf, off) {
   return cfg;
 }
 
-/** 为不同用途的取值打分：字符串偏好默认配置，图片偏好高密度 */
+/** Puntúa los valores según el uso: las cadenas prefieren la configuración predeterminada, las imágenes prefieren alta densidad */
 function score(cfg, prefer) {
   let s = 0;
   if (prefer === 'file') {
-    s += cfg.density === 0 ? 0 : cfg.density;          // 高密度优先
-    if (cfg.density === 0xfffe) s -= 500;               // anydpi 可能是 xml，扣分
+    s += cfg.density === 0 ? 0 : cfg.density;          // Preferir mayor densidad
+    if (cfg.density === 0xfffe) s -= 500;               // anydpi podría ser xml, se penaliza
   } else {
-    s -= cfg.density === 0 ? 0 : 10;                    // 字符串：无密度优先
+    s -= cfg.density === 0 ? 0 : 10;                    // Cadenas: preferir sin densidad
     if (cfg.language) s -= 40;
     if (cfg.sdkVersion) s -= cfg.sdkVersion / 1000;
     if (cfg.uiMode) s -= 20;
@@ -117,7 +117,7 @@ class ResTable {
     try {
       if (typeStringsOff) typeStrings = readStringPool(buf, start + typeStringsOff);
       if (keyStringsOff) keyStrings = readStringPool(buf, start + keyStringsOff);
-    } catch (_) { /* 容错：缺字符串池不影响主流程 */ }
+    } catch (_) { /* Tolerancia a fallos: la ausencia del grupo de cadenas no afecta al flujo principal */ }
 
     const types = new Map(); // typeId -> [{ config, entries: Map }]
     let pos = start + headerSize;
@@ -152,7 +152,7 @@ class ResTable {
     const entriesBase = start + entriesStart;
 
     if (flags & 0x01) {
-      // FLAG_SPARSE：entryCount 个 (idx:u16, offset:u16)
+      // FLAG_SPARSE: entryCount pares (idx:u16, offset:u16)
       for (let i = 0; i < entryCount; i++) {
         const idx = buf.readUInt16LE(offsetsBase + i * 4);
         const off = buf.readUInt16LE(offsetsBase + i * 4 + 2) * 4;
@@ -183,7 +183,7 @@ class ResTable {
     if (at + 8 > buf.length) return null;
     const entrySize = buf.readUInt16LE(at);
     const flags = buf.readUInt16LE(at + 2);
-    if (flags & 0x0001) return null; // 复杂资源（bag/map），此处不处理
+    if (flags & 0x0001) return null; // Recursos complejos (bag/map), no se tratan aquí
     const valueAt = at + entrySize;
     return {
       dataType: buf.readUInt8(valueAt + 3),
@@ -192,7 +192,7 @@ class ResTable {
   }
 
   /**
-   * 解析资源引用
+   * Resuelve una referencia a un recurso
    * @param {number} ref 0xPPTTEEEE
    * @param {'string'|'file'|'any'} prefer
    * @param {number} depth

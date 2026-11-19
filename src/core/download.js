@@ -1,7 +1,7 @@
 'use strict';
 /**
- * 下载器：支持重定向、断点续传、进度回调、SHA-256 校验
- * 只依赖 http/https，主进程与纯 Node 测试都可使用。
+ * Descargador: admite redirecciones, reanudación, callback de progreso y verificación SHA-256.
+ * Solo depende de http/https; se puede usar tanto en el proceso principal como en pruebas puras de Node.
  */
 const fs = require('fs');
 const path = require('path');
@@ -13,10 +13,11 @@ const { URL } = require('url');
 const UA = 'ApkBuddyStart/0.2 (Windows; +https://github.com/apkstart)';
 
 /**
- * 校验服务器返回的 Content-Range 是否与本次请求一致。
- * 断点续传/分块下载最怕「服务器不认 Range、从头发整包」或「返回了别的文件的分块」——
- * 直接写进目标文件会拼出看似完整、实则损坏的包。这里逐项比对起止位、总大小和
- * Content-Length，有任何不符就拒绝，交给上层换源/重来。
+ * Verificar que el Content-Range devuelto por el servidor coincide con esta petición.
+ * En la reanudación / descarga por bloques, lo peor es que «el servidor no acepte Range y envíe el paquete desde el principio»
+ * o que «devuelva un bloque de otro archivo»: escribirlo directamente en el archivo de destino da un paquete que parece completo
+ * pero está dañado. Aquí se comparan uno a uno los bytes de inicio/fin, el tamaño total y el Content-Length;
+ * cualquier discrepancia se rechaza y se pasa al llamador para que cambie de origen o reintente.
  */
 function validRange(res, start, end, total) {
   const m = /^bytes (\d+)-(\d+)\/(\d+)$/.exec(String(res.headers['content-range'] || ''));
@@ -75,25 +76,25 @@ function sha256File(file) {
 }
 
 /**
- * 丢弃一次失败下载留下的所有残余。
+ * Descartar todos los restos de una descarga fallida.
  *
- * 这是「一直重复下载」的根因：以前所有失败路径都只抛异常、不删文件，
- * 于是 tmp 里永远躺着一个半截 zip + 一份 .chunks.json 边车。下次进来
- * downloadParallel/download 看到已有文件就带 Range 续传，可服务器给的
- * 总大小/分块方式只要和上次不一样，就会继续失败 → 又留下半截文件 →
- * 无限循环。用户看到的是「每次打开都在重新下载同一个包」。
+ * Esta es la causa raíz del «siempre vuelve a descargar»: antes, todas las rutas de fallo solo lanzaban una excepción sin borrar archivos,
+ * así que en tmp quedaba para siempre un zip a medias junto con su archivo lateral .chunks.json. La próxima vez,
+ * downloadParallel/download veía el archivo existente y continuaba con Range; pero en cuanto el tamaño total /
+ * el modo de fragmentación del servidor diferían de la vez anterior, volvía a fallar → otro archivo a medias →
+ * bucle infinito. El usuario ve «cada vez que abro, vuelve a descargar el mismo paquete».
  *
- * 保留断点续传的价值没错，但必须限定在「确认能续」的场景；一旦这次
- * 下载判定失败，就整包作废，下次干净重来。
+ * Conservar la reanudación está bien, pero hay que limitarla a los casos en que «se puede continuar de verdad»; en cuanto
+ * esta descarga se declara fallida, se invalida el paquete entero y se empieza limpio la próxima vez.
  */
 function discardPartial(dest) {
   for (const p of [dest, `${dest}.chunks.json`, `${dest}.part`]) {
-    try { fs.rmSync(p, { force: true }); } catch (_) { /* 被占用就算了 */ }
+    try { fs.rmSync(p, { force: true }); } catch (_) { /* Si está ocupado, se omite */ }
   }
 }
 
 /**
- * 下载到本地文件（自动续传）。
+ * Descargar a un archivo local (reanuda automáticamente).
  * @param {string} url
  * @param {string} dest
  * @param {object} opt { onProgress({got,total,percent,speed}), signal, expectSha256, timeoutMs }
@@ -115,9 +116,9 @@ async function download(url, dest, opt = {}) {
 
     if (res.statusCode === 416) {
       res.resume();
-      // 416 有两种可能：文件真的下完了，或本地残片与目标对不上（服务器认为这个
-      // Range 不合法）。以前无条件当成功，会把坏残片留成"已下载"。这里只要带过
-      // Range 且还能重试，就清掉残片重新完整拉一遍；重试用尽仍未成功则报错。
+      // Un 416 puede significar dos cosas: el archivo ya se descargó del todo, o el fragmento local no concuerda con el destino (el servidor considera que ese
+      // Range no es válido). Antes se daba por éxito sin más y el fragmento malo quedaba como «descargado». Aquí, si se envió Range y aún quedan reintentos,
+      // se borra el fragmento y se vuelve a bajar completo; si se agotan los reintentos sin éxito, se lanza el error.
       if (existing > 0 && attempt <= retries + 1) {
         discardPartial(dest);
         continue;
@@ -127,7 +128,7 @@ async function download(url, dest, opt = {}) {
     if (res.statusCode !== 200 && res.statusCode !== 206) {
       res.resume();
       if (attempt <= retries) { await new Promise((r) => setTimeout(r, 1500)); continue; }
-      discardPartial(dest);   // 重试耗尽：别把坏文件留给下次续传
+      discardPartial(dest);   // Reintentos agotados: no dejar el archivo malo para la próxima reanudación
       throw new Error(`Error de descarga, HTTP ${res.statusCode}: ${url}`);
     }
 
@@ -145,7 +146,7 @@ async function download(url, dest, opt = {}) {
       : Number(res.headers['content-length']) || 0;
 
     if (res.statusCode === 200 && existing > 0) {
-      // 服务器不支持续传，重头写
+      // El servidor no admite reanudación; se escribe desde el principio
       fs.rmSync(dest, { force: true });
     }
 
@@ -157,9 +158,9 @@ async function download(url, dest, opt = {}) {
         let lastBytes = got;
         const ws = fs.createWriteStream(dest, { flags: startSize > 0 ? 'a' : 'w' });
 
-        // 和分块下载一样：必须保证 promise 一定会 settle。
-        // 连接静默（被墙/被限速）时 res 既不 end 也不 error，pipe 永远不 finish，
-        // 整个下载就卡死在这里，用户看到的是进度条不动、也没有报错。
+        // Igual que en la descarga por bloques: hay que garantizar que la promise termine sí o sí.
+        // Si la conexión se calla (bloqueo / limitación), res no emite end ni error, pipe nunca termina,
+        // y toda la descarga se queda colgada aquí: el usuario ve la barra de progreso inmóvil y sin ningún error.
         const idleMs = Number(opt.idleMs) > 0 ? Number(opt.idleMs) : 30000;
         let settled = false;
         let idle = null;
@@ -206,7 +207,7 @@ async function download(url, dest, opt = {}) {
         res.on('close', () => { if (!res.complete) finish(new Error('Conexión interrumpida')); });
       });
     } catch (e) {
-      // 中断 / 超时 / 写盘失败：半截文件留着只会让下次续传继续失败
+      // Interrupción / tiempo de espera / fallo de escritura: dejar el archivo a medias solo hará que la próxima reanudación vuelva a fallar
       discardPartial(dest);
       throw e;
     }
@@ -214,7 +215,7 @@ async function download(url, dest, opt = {}) {
     break;
   }
 
-  // 收尾：确保进度条走到 100%
+  // Remate: asegurar que la barra de progreso llega al 100 %
   const finalSize = fs.existsSync(dest) ? fs.statSync(dest).size : 0;
   onProgress({ got: finalSize, total: finalSize, percent: 100, speed: 0, eta: 0 });
 
@@ -227,18 +228,18 @@ async function download(url, dest, opt = {}) {
   }
   return { file: dest, size: fs.statSync(dest).size };
   } catch (e) {
-    // openStream 直接 reject（连接被拒 / DNS 失败 / 超时）时不会进入写流那段
-    // try/catch —— 以前这里什么都不清，半截文件留着让下次续传继续失败。
-    // 统一在最外层兜住：任何抛出都先丢弃残余。
+    // openStream rechaza directamente (conexión rechazada / fallo DNS / tiempo de espera) y no entra en el
+    // try/catch de la escritura — antes aquí no se limpiaba nada y el archivo a medias hacía fallar la reanudación siguiente.
+    // Se cubre todo en el nivel más externo: cualquier excepción descarta primero los restos.
     discardPartial(dest);
     throw e;
   }
 }
 
 /**
- * 并行分块下载（大文件专用）。
- * 单条 TCP 连接在部分镜像上会被限速到几十 KB/s，分块并发能显著提升实际吞吐。
- * 仅在「目标文件不存在」时并行；已有部分文件时退回单流续传，避免分块状态丢失。
+ * Descarga paralela por bloques (para archivos grandes).
+ * Una sola conexión TCP se ve limitada a decenas de KB/s en algunos espejos; la concurrencia por bloques mejora mucho el rendimiento real.
+ * Solo se hace en paralelo si «el archivo de destino no existe»; si ya hay un archivo parcial, se vuelve a la reanudación de flujo único para no perder el estado de bloques.
  */
 async function downloadParallel(url, dest, opt = {}) {
   const {
@@ -248,12 +249,12 @@ async function downloadParallel(url, dest, opt = {}) {
     retries = 3,
   } = opt;
 
-  // 已有部分文件 → 交给单流续传
+  // Ya hay un archivo parcial → se deja a la reanudación de flujo único
   if (fs.existsSync(dest) && fs.statSync(dest).size > 0) {
     return download(url, dest, opt);
   }
 
-  // 探测是否支持 Range
+  // Se comprueba si se admite Range
   let total = 0;
   let supportsRange = false;
   try {
@@ -266,7 +267,7 @@ async function downloadParallel(url, dest, opt = {}) {
       total = Number(probe.headers['content-length']) || 0;
     }
     probe.destroy();
-  } catch (_) { /* 探测失败则走单流 */ }
+  } catch (_) { /* Si la detección falla, se usa flujo único */ }
 
   if (!supportsRange || !total || total < minChunk * 2) {
     return download(url, dest, opt);
@@ -278,7 +279,7 @@ async function downloadParallel(url, dest, opt = {}) {
   fs.mkdirSync(path.dirname(dest), { recursive: true });
   fs.rmSync(dest, { force: true });
 
-  // 先建空文件并定位到末字节，避免后续 write 越界
+  // Primero se crea el archivo vacío y se sitúa en el último byte, para que los write posteriores no se salgan de límites
   const fd = fs.openSync(dest, 'w');
   fs.ftruncateSync(fd, total);
 
@@ -316,8 +317,8 @@ async function downloadParallel(url, dest, opt = {}) {
       throw new Error('El servidor devolvió un rango de fragmentos que no coincide');
     }
     await new Promise((resolve, reject) => {
-      // 必须自己兜住「promise 永远不 settle」：res.destroy(err) 在某些情况下只发
-      // close 不发 error，没有这个 guard 的话一整块会挂死，整个下载停在那里不动。
+      // Hay que cubrirse uno mismo de que «la promise nunca termina»: res.destroy(err) en algunos casos solo emite
+      // close y no error; sin esta guarda, un bloque entero se queda colgado y la descarga se detiene ahí.
       let settled = false;
       const finish = (err) => {
         if (settled) return;
@@ -331,8 +332,8 @@ async function downloadParallel(url, dest, opt = {}) {
         idle = setTimeout(() => { res.destroy(); finish(new Error('Conexión estancada (mucho tiempo sin datos)')); }, idleMs);
       };
       res.on('data', (buf) => {
-        // 服务器可能返回超出请求分块范围的数据，多出来的字节会写穿到别的分块，
-        // 拼出一个静默损坏的包。宁可判失败换源，不能让它落盘。
+        // El servidor puede devolver más datos de los que corresponden al bloque pedido; esos bytes de más se escribirían
+        // sobre otro bloque y darían un paquete dañado de forma silenciosa. Mejor declarar fallo y cambiar de origen: no se permite que se escriba en disco.
         if (buf.length > c.end - c.pos + 1) {
           res.destroy();
           return finish(new Error('La respuesta del fragmento supera el rango solicitado'));
@@ -373,7 +374,7 @@ async function downloadParallel(url, dest, opt = {}) {
     }));
   } catch (e) {
     try { fs.closeSync(fd); } catch (_) { /* ignore */ }
-    discardPartial(dest);   // 整包作废，别留半截文件给下次续传
+    discardPartial(dest);   // Paquete entero invalidado; no dejar archivos a medias para la próxima reanudación
     throw e;
   }
   fs.closeSync(fd);
@@ -387,11 +388,11 @@ async function downloadParallel(url, dest, opt = {}) {
   return { file: dest, size, parallel: n };
 }
 
-/** 依次尝试多个源，任一成功即返回 */
+/** Probar varios orígenes en orden; se devuelve el primero que funciona */
 async function downloadAny(urls, dest, opt = {}) {
   const errors = [];
   for (const u of urls) {
-    discardPartial(dest);   // 换源前清掉上一个源的半截文件
+    discardPartial(dest);   // Antes de cambiar de origen, se borra el archivo a medias del anterior
     try {
       // eslint-disable-next-line no-await-in-loop
       const r = await download(u, dest, opt);
@@ -406,23 +407,23 @@ ${errors.join('\n')}`);
 }
 
 /**
- * 多源同时下载：把文件切成若干块，**不同块同时从不同源拉**，带宽叠加。
+ * Descarga multi-origen simultánea: se corta el archivo en bloques y **distintos bloques se bajan a la vez de orígenes distintos**, sumando ancho de banda.
  *
- * 为什么需要：GitHub 单连接限速很常见，而镜像站通常也各自限速；
- * 8 条连接都指向同一个地址时，天花板就是那个地址的上限。把 4 条给 GitHub、
- * 4 条给镜像，两者上限相加，实测能快一倍以上。
+ * Por qué hace falta: limitar una sola conexión de GitHub es muy habitual, y los espejos también suelen limitar cada uno;
+ * si las 8 conexiones apuntan a la misma dirección, el techo es el límite de esa dirección. Si se dan 4 a GitHub y
+ * 4 al espejo, se suman ambos topes y en pruebas se consigue más del doble de velocidad.
  *
- * 安全前提：只有「声明总大小一致」的源才会被混用，否则可能拼出坏文件；
- * 任一源中途失败，它的分块会自动换到下一条可用地址重试（不整包重来）。
+ * Condición de seguridad: solo se mezclan orígenes que «declaran el mismo tamaño total», o se podría armar un archivo dañado;
+ * si un origen falla a mitad, sus bloques se reintentan automáticamente en la siguiente dirección disponible (sin rehacer el paquete entero).
  */
 async function downloadMulti(urls, dest, opt = {}) {
   const {
     connections = 8,
     onProgress = () => {},
     minChunk = 2 * 1024 * 1024,
-    // 每个分块的重试次数。3 次在「三个源里有两个偶尔停摆」的链路上不够用：
-    // 1.4GB 的运行时包一旦有块耗尽重试，整包作废重下。给到 6 次（每源两轮）。
-    // 重试是从断点继续的（c.pos 保留），不会重复下载已收到的字节。
+    // Número de reintentos por bloque. 3 no bastan en un enlace donde «dos de tres orígenes fallan de vez en cuando»:
+    // si un bloque del paquete de runtime de 1,4 GB agota los reintentos, el paquete entero se invalida y se vuelve a bajar. Se sube a 6 (dos rondas por origen).
+    // El reintento continúa desde el punto de corte (se conserva c.pos), así que no se vuelven a descargar los bytes ya recibidos.
     retries = 6,
   } = opt;
   const idleMs = Number(opt.idleMs) > 0 ? Number(opt.idleMs) : 20000;
@@ -431,7 +432,7 @@ async function downloadMulti(urls, dest, opt = {}) {
   if (!list.length) throw new Error('No hay direcciones de descarga disponibles');
   if (list.length === 1) return downloadParallel(list[0], dest, opt);
 
-  // 1) 并行探测：总大小 + 是否支持 Range
+  // 1) Detección en paralelo: tamaño total y si se admite Range
   const probes = await Promise.all(list.map(async (u) => {
     try {
       const res = await openStream(u, { headers: { Range: 'bytes=0-0' } });
@@ -448,26 +449,26 @@ async function downloadMulti(urls, dest, opt = {}) {
   if (!usable.length) {
     return downloadAnyParallel(list, dest, opt);
   }
-  // 只混用「声明总大小一致」的源，否则会拼出坏文件。
-  // 基准取**实测最快那个源的总大小**（usable 的顺序就是 rank() 排好的速度序，
-  // 探测是 Promise.all 但结果按输入顺序返回）：
-  // GitHub 与 Gitee 各自压出来的包字节数不同（差几 MB 很正常），
-  // 以前固定取 Math.max，等于永远去下体积更大的那个源 —— 国内网络下
-  // 反而是「更快的 Gitee 包被排除、被迫走慢的 GitHub 包」。
+  // Solo se mezclan orígenes que «declaran el mismo tamaño total», o se arma un archivo dañado.
+  // De referencia se toma el tamaño total del origen **más rápido medido** (el orden de usable ya viene ordenado por velocidad con rank(),
+  // la detección es Promise.all pero los resultados vuelven en orden de entrada):
+  // GitHub y Gitee comprimen cada uno sus bytes (diferir varios MB es normal);
+  // antes se tomaba Math.max fijo, lo que equivalía a descargar siempre el origen más grande — y en redes de China eso
+  // significaba «se excluye el paquete rápido de Gitee y se obliga a usar el lento de GitHub».
   const total = usable[0].total;
   const same = usable.filter((p) => p.total === total);
   if (same.length === 1 || total < minChunk * 2) {
     return downloadParallel(same[0].url, dest, opt);
   }
 
-  // 2) 切块，轮转分配源
+  // 2) Se corta en bloques y se asignan orígenes por turnos
   const n = Math.max(2, Math.min(connections, Math.ceil(total / minChunk)));
   const per = Math.ceil(total / n);
   fs.mkdirSync(path.dirname(dest), { recursive: true });
 
-  // 分块断点续传：1.4GB 的包在「镜像偶尔停摆」的链路上很容易有块耗尽重试，
-  // 一旦整包作废重下，用户要再等十几分钟。这里把「哪些块已经下完」记在
-  // 边车文件里，下次（同一路径、同一分块方式）只补缺的块。
+  // Reanudación por bloques: en un enlace donde «el espejo falla de vez en cuando», un bloque del paquete de 1,4 GB
+  // puede agotar fácilmente los reintentos y obligar a rehacer todo el paquete, con otros diez minutos de espera.
+  // Aquí se anota en un archivo lateral qué bloques ya están completos, y la próxima vez (misma ruta y misma fragmentación) solo se rellenan los que faltan.
   const meta = `${dest}.chunks.json`;
   let doneSet = new Set();
   let resume = false;
@@ -477,7 +478,7 @@ async function downloadMulti(urls, dest, opt = {}) {
       doneSet = new Set(m.done || []);
       resume = true;
     }
-  } catch (_) { /* 没有边车就全新下 */ }
+  } catch (_) { /* Si no hay archivo lateral, se descarga todo de nuevo */ }
 
   if (!resume) {
     fs.rmSync(dest, { force: true });
@@ -492,16 +493,16 @@ async function downloadMulti(urls, dest, opt = {}) {
     pos: i * per,
     src: i % same.length,
     tries: 0,
-    rotates: 0,   // 必须显式初始化：undefined < 2 是 false，换源永远不会触发
+    rotates: 0,   // Hay que inicializarlo explícitamente: undefined < 2 es false y el cambio de origen nunca se dispararía
   })).filter((c) => !doneSet.has(c.start));
 
   const saveMeta = () => {
     try {
       fs.writeFileSync(meta, JSON.stringify({ total, n, done: [...doneSet] }));
-    } catch (_) { /* 边车写不进去不影响下载 */ }
+    } catch (_) { /* Si no se puede escribir el archivo lateral, no afecta a la descarga */ }
   };
 
-  // 续传时把已完成的块算进进度，用户看到的百分比不会从 0 重来
+  // En la reanudación se suman al progreso los bloques ya completos, para que el porcentaje no vuelva a empezar en 0
   let got = resume ? [...doneSet].reduce((sum, start) => (
     sum + (Math.min(total - 1, start + per - 1) - start + 1)
   ), 0) : 0;
@@ -523,9 +524,9 @@ async function downloadMulti(urls, dest, opt = {}) {
     });
   };
 
-  // 低速换源：某一块从某个源只跑到几十 KB/s 时，光等它下完会把整个下载拖成
-  // 「卡在 95% 不动」。跑够 slowAfterMs 且平均速度低于 slowBps 就中断、换下一个源
-  // （从断点继续，不丢数据）。每块最多换 2 次，避免在几个慢源之间来回横跳。
+  // Cambio de origen por baja velocidad: cuando un bloque solo va a decenas de KB/s desde un origen, esperar a que termine
+  // convierte toda la descarga en «se quedó en el 95 %». Si supera slowAfterMs y la velocidad media está por debajo de slowBps,
+  // se interrumpe y se pasa al siguiente origen (continuando desde el punto de corte, sin perder datos). Máximo 2 cambios por bloque, para no dar saltos entre orígenes lentos.
   const slowAfterMs = Number(opt.slowAfterMs) > 0 ? Number(opt.slowAfterMs) : 45000;
   const slowBps = Number(opt.slowBps) > 0 ? Number(opt.slowBps) : 120 * 1024;
 
@@ -542,14 +543,14 @@ async function downloadMulti(urls, dest, opt = {}) {
     }
     const startPos = c.pos;
     const startedAt = Date.now();
-    // 同一条连接 destroy 之后仍可能再收到已缓冲的包，会重复触发换源、把源跳过头，
-    // 所以每次请求只允许换一次。
+    // Tras destroy, una misma conexión aún puede recibir paquetes ya en búfer, lo que dispararía otro cambio de origen y se saltaría demasiados;
+    // por eso cada petición solo permite un cambio.
     let rotated = false;
     await new Promise((resolve, reject) => {
-      // 空闲看门狗 + 「保证 settle」：连接建立了但一个字节都不来（常见的
-      // 「TCP 通但被墙/被限」），光等 socket 超时要 30 秒；而 res.destroy(err)
-      // 可能只发 close 不发 error，promise 就永远不会 reject —— 表现是一块挂死、
-      // 整个下载停在那里（实测踩过）。所以看门狗自己调用 finish。
+      // Perro guardián de inactividad + «garantizar el settle»: la conexión se establece pero no llega ni un byte (típico
+      // «TCP conecta pero está bloqueado/limitado»), y esperar a que el socket agote el tiempo son 30 s; además res.destroy(err)
+      // puede emitir solo close y no error, con lo que la promise nunca rechaza: un bloque se queda colgado y la descarga entera se detiene (tropezado en la práctica).
+      // Por eso el perro guardián llama a finish por su cuenta.
       let settled = false;
       const finish = (err) => {
         if (settled) return;
@@ -563,7 +564,7 @@ async function downloadMulti(urls, dest, opt = {}) {
         idle = setTimeout(() => { res.destroy(); finish(new Error('Conexión estancada (tiempo sin datos)')); }, idleMs);
       };
       res.on('data', (buf) => {
-        // 同上：拒绝超出请求范围的字节，避免静默写坏分块
+        // Igual que arriba: se rechazan bytes fuera del rango pedido, para no dañar un bloque sin que se note
         if (buf.length > c.end - c.pos + 1) {
           res.destroy();
           return finish(new Error('La respuesta del fragmento supera el rango solicitado'));
@@ -578,14 +579,14 @@ async function downloadMulti(urls, dest, opt = {}) {
         got += buf.length;
         kick();
         tick(false);
-        // 还没下完就慢到不可接受 → 换源（c.pos 已前进，下次从断点继续）
+        // Si aún no ha terminado y va demasiado lento → cambiar de origen (c.pos ya avanzó; la próxima vez se continúa desde ahí)
         const took = Date.now() - startedAt;
         if (!rotated && took > slowAfterMs && (c.rotates || 0) < 2 && c.pos <= c.end) {
           const bps = (c.pos - startPos) / (took / 1000);
           if (bps < slowBps) {
             rotated = true;
             c.rotates = (c.rotates || 0) + 1;
-            // 这里不推进 c.src：换源统一由下面的 catch 做，否则一次失败会跳两个源
+            // Aquí no se avanza c.src: el cambio de origen lo hace unificado el catch de abajo, o un solo fallo saltaría dos orígenes
             res.destroy();
             finish(new Error(`Esta fuente es demasiado lenta (${(bps / 1024).toFixed(0)} KB/s), cambia de fuente e inténtalo de nuevo`));
           }
@@ -612,13 +613,13 @@ async function downloadMulti(urls, dest, opt = {}) {
         } catch (e) {
           c.tries += 1;
           if (c.tries >= retries) {
-            // 重试耗尽：这份文件里已经混进了「从不同源拉来的块」，再续传也
-            // 拼不出正确字节。整包 + 边车一起作废，下次干净重来。
-            // 以前这里只 saveMeta() 保留，结果每次打开都从坏块继续 → 无限重下。
+            // Reintentos agotados: este archivo ya tiene mezclados bloques de distintos orígenes y por mucha reanudación
+            // no se van a poder unir en bytes correctos. Se invalidan el paquete entero y el archivo lateral, y se empieza limpio.
+            // Antes aquí solo se hacía saveMeta() para conservar, y cada apertura seguía desde el bloque malo → redescarga infinita.
             discardPartial(dest);
             throw new Error(`Error al dividir en bloques (${c.start}-${c.end}）：${e.message}`);
           }
-          // 换一个源再试：一个镜像抽风不该拖垮整个下载
+          // Se prueba otro origen: un espejo que se porta mal no debe tirar abajo toda la descarga
           c.src += 1;
           // eslint-disable-next-line no-await-in-loop
           await new Promise((r) => setTimeout(r, 600 * c.tries));
@@ -642,12 +643,12 @@ async function downloadMulti(urls, dest, opt = {}) {
   return { file: dest, size, parallel: n, sources: same.length, multi: true, resumed: resume };
 }
 
-/** 依次尝试多个源（并行分块版），任一成功即返回 */
+/** Probar varios orígenes en orden (versión por bloques paralelos); se devuelve el primero que funciona */
 async function downloadAnyParallel(urls, dest, opt = {}) {
   const errors = [];
   for (const u of urls) {
-    // 换源前必须清掉上一个源留下的半截文件：不同源压出来的包字节可能不同，
-    // 拿 A 源的半成品去续传 B 源，拼出来一定是坏文件（校验又失败 → 再重下）。
+    // Antes de cambiar de origen hay que borrar el archivo a medias del anterior: los paquetes de orígenes distintos pueden tener bytes diferentes,
+    // y continuar con el fragmento del origen A en el origen B daría siempre un archivo dañado (falla la verificación → otra descarga).
     discardPartial(dest);
     try {
       // eslint-disable-next-line no-await-in-loop

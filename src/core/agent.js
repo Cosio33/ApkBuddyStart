@@ -1,15 +1,16 @@
 'use strict';
 /**
- * Windows 窗口代理：与 src/core/win/agent.ps1 里的常驻进程通信。
+ * Agente de ventanas de Windows: se comunica con el proceso residente de src/core/win/agent.ps1.
  *
- * 为什么不是每次 spawn 一个 PowerShell：窗口跟随鼠标拖动时会频繁改尺寸，
- * 每次起一个 powershell.exe 要 150~300ms，拖动就会一顿一顿的。
- * 这里只启动一次，之后走本机回环 TCP（一行一个 JSON），单次往返 <2ms。
+ * ¿Por qué no lanzar un PowerShell cada vez?: al arrastrar la ventana siguiendo al ratón, el tamaño cambia constantemente,
+ * y arrancar un powershell.exe tarda 150~300 ms, por lo que el arrastre iría a tirones.
+ * Aquí se inicia una sola vez y después se usa TCP de bucle local (un JSON por línea), con ida y vuelta <2 ms.
  *
- * 代理可选负责 WH_MOUSE_LL 鼠标钩子：右键返回 / 滚轮滑动 / 侧键前进后退。
- * 该钩子是全局的，会介入系统里每一次鼠标事件，因此只在「应用窗口处于前台」
- * 且至少启用一项映射时安装，失焦立即卸载；回调只处理我们关心的 7 个消息。
- * 见 setHook(on, opts)。
+ * El agente puede hacerse cargo del hook de ratón WH_MOUSE_LL: volver con el botón derecho / desplazamiento con la rueda /
+ * avanzar y retroceder con los botones laterales. El hook es global e interviene en cada evento de ratón del sistema,
+ * por lo que solo se instala cuando «la ventana de la app está en primer plano» y hay al menos una asignación activa;
+ * se desinstala en cuanto se pierde el foco; la callback solo gestiona los 7 mensajes que nos interesan.
+ * Véase setHook(on, opts).
  */
 const { spawn } = require('child_process');
 const net = require('net');
@@ -36,7 +37,7 @@ class WinAgent extends EventEmitter {
 
   get available() { return process.platform === 'win32' && fs.existsSync(SCRIPT); }
 
-  /** 启动代理并等到 TCP 连上（幂等） */
+  /** Iniciar el agente y esperar a que conecte por TCP (idempotente) */
   ensure() {
     if (this.ready) return this.ready;
     this.ready = new Promise((resolve, reject) => {
@@ -108,7 +109,7 @@ class WinAgent extends EventEmitter {
       if (!line) continue;
       let msg = null;
       try { msg = JSON.parse(line); } catch (_) { continue; }
-      // 事件带负载（滚轮的 dx/dy/nx/ny），老监听器忽略多余参数即可
+      // Los eventos llevan carga útil (dx/dy/nx/ny de la rueda); los listeners antiguos pueden ignorar los argumentos de más
       if (msg.ev) { this.emit(msg.ev, msg); continue; }
       const p = this.pending.shift();
       if (p) { clearTimeout(p.timer); p.resolve(msg); }
@@ -124,7 +125,7 @@ class WinAgent extends EventEmitter {
     }
   }
 
-  /** 发送一条命令并等待回包 */
+  /** Enviar un comando y esperar la respuesta */
   async call(obj, timeout = CALL_TIMEOUT) {
     await this.ensure();
     if (!this.sock) throw new Error('Proxy de ventana sin conexión');
@@ -135,16 +136,16 @@ class WinAgent extends EventEmitter {
     });
   }
 
-  // ---------------- 便捷方法 ----------------
+  // ---------------- Métodos de conveniencia ----------------
 
   /**
-   * 声明「哪些目录里的进程才算我们的」。
-   * 必须在 bootHide / embed 之前调用：窗口代理只允许碰这些进程创建的窗口。
-   * 不传（或传空）时代理一个窗口都不动 —— 宁可偶尔漏一个黑窗，
-   * 也绝不把别的 Qt 应用（微信 4.x 就是 Qt6、MuMu、音乐播放器）的窗口藏掉或嵌进来。
-   * @param {string[]} dirs 运行时根目录 / 随包的 engine 目录
-   * @param {number} [appPid] 主进程 pid：代理只允许把窗口嵌进这个进程的窗口，
-   *        并以此为据决定「鼠标事件的当前窗口是不是我们的」（防止句柄被回收复用）
+   * Declarar «de qué directorios se considera que los procesos son nuestros».
+   * Debe llamarse antes de bootHide / embed: el agente de ventanas solo puede tocar ventanas creadas por esos procesos.
+   * Si no se pasa (o se pasa vacío), el agente no toca ninguna ventana: mejor dejar escapar alguna ventana negra de vez en cuando
+   * que ocultar o acoplar ventanas de otras apps Qt (WeChat 4.x usa Qt6, MuMu, reproductores de música).
+   * @param {string[]} dirs directorio raíz del runtime / directorio engine incluido en el paquete
+   * @param {number} [appPid] pid del proceso principal: el agente solo puede acoplar ventanas a ventanas de este proceso,
+   *        y con eso decide si «la ventana actual del evento de ratón es nuestra» (evita reutilización de handles reciclados)
    */
   async scope(dirs, appPid) {
     const list = (Array.isArray(dirs) ? dirs : [dirs]).filter(Boolean);
@@ -154,13 +155,13 @@ class WinAgent extends EventEmitter {
   }
 
   /**
-   * 把画面窗口嵌进宿主窗口，并摆到 x,y,w,h（宿主客户区坐标）。
+   * Acoplar la ventana de imagen a la ventana anfitriona y colocarla en x,y,w,h (coordenadas del área cliente del anfitrión).
    *
-   * @param {number|string} hostHwnd 宿主窗口句柄
+   * @param {number|string} hostHwnd handle de la ventana anfitriona
    * @param {object} rect { x, y, w, h, clipTop }
-   * @param {string[]} [targets] 第三方底座报上来的候选句柄（"0x…"）。
-   *        不传 = 老行为：由代理按进程作用域自己找自带 emulator 的窗口。
-   *        传了 = 只嵌这些句柄里的一个（MuMu / 其它模拟器的画面窗口）。
+   * @param {string[]} [targets] handles candidatos informados por una base de terceros ("0x…").
+   *        Si no se pasa = comportamiento anterior: el agente busca por su cuenta la ventana del emulator incluido según el ámbito de proceso.
+   *        Si se pasa = acoplar solo uno de esos handles (la ventana de imagen de MuMu / otros emuladores).
    */
   async embed(hostHwnd, rect, targets = null) {
     const req = {
@@ -174,7 +175,7 @@ class WinAgent extends EventEmitter {
     return this.call(req, 6000);
   }
 
-  /** 候选句柄现在还存在几个（第三方底座就绪门禁用） */
+  /** Cuántos de los handles candidatos siguen existiendo (para la puerta de listo de bases de terceros) */
   async windowReady(targets = []) {
     if (!Array.isArray(targets) || !targets.length) return { ok: false, alive: 0 };
     return this.call({ cmd: 'winready', target: targets.join(',') }, 3000)
@@ -186,8 +187,8 @@ class WinAgent extends EventEmitter {
       cmd: 'fit',
       x: Math.round(rect.x), y: Math.round(rect.y),
       w: Math.round(rect.w), h: Math.round(rect.h),
-      // 模拟器 Qt 窗口比 LCD 多出 EMU_PAD 的外框，我们让它向上/向左溢出把这个外框
-      // 挤出客户区；溢出到标题栏上的那一条会被裁掉（否则点标题栏按钮时会冒黑边）。
+      // La ventana Qt del emulador tiene un marco EMU_PAD además de la LCD; lo hacemos desbordar hacia arriba/izquierda para
+      // sacar ese marco del área cliente; la franja que desborda sobre la barra de título se recorta (si no, al pulsar los botones de la barra aparece un borde negro).
       clipTop: Math.round(rect.clipTop || 0),
     }, 3000);
   }
@@ -195,11 +196,11 @@ class WinAgent extends EventEmitter {
   async rotate(dir = 'left') { return this.call({ cmd: 'rotate', dir }, 8000); }
   async hide() { return this.call({ cmd: 'hide' }, 3000); }
   async show() { return this.call({ cmd: 'show' }, 3000); }
-  /** 通知代理进入低延迟模式：大幅降低窗口扫描频率，把 CPU 留给安卓渲染 */
+  /** Avisar al agente de que entre en modo de baja latencia: reducir mucho la frecuencia de escaneo de ventanas y dejar la CPU para el renderizado de Android */
   async setPerformanceMode(on) { return this.call({ cmd: 'perf', on: on ? 1 : 0 }, 3000); }
-  /** @param {boolean} keep true=切到独立窗口模式（别把模拟器窗口藏掉，并保留句柄） */
+  /** @param {boolean} keep true= pasar a modo de ventana independiente (no ocultar la ventana del emulador y conservar su handle) */
   async detach(keep = false) { return this.call({ cmd: 'detach', keep: keep ? 1 : 0 }, 5000); }
-  /** 独立窗口模式：把模拟器原生窗口摆到指定屏幕矩形（不嵌入） */
+  /** Modo de ventana independiente: colocar la ventana nativa del emulador en el rectángulo de pantalla indicado (sin acoplar) */
   async layout(rect) {
     return this.call({
       cmd: 'layout',
@@ -208,28 +209,29 @@ class WinAgent extends EventEmitter {
     }, 4000);
   }
   /**
-   * 把模拟器原生窗口的标题从 "Android Emulator - apkstart:5554" 改成用户看得懂的名字。
-   * 传空串时默认 "ApkBuddyStart"。代理会在巡检里持续补设（Qt 偶尔会自己改回去）。
+   * Cambiar el título de la ventana nativa del emulador de "Android Emulator - apkstart:5554" a un nombre comprensible para el usuario.
+   * Si se pasa una cadena vacía, se usa "ApkBuddyStart" por defecto. El agente sigue poniéndolo en sus inspecciones (Qt a veces lo cambia de nuevo).
    */
   async setTitle(text = 'ApkBuddyStart') {
     return this.call({ cmd: 'title', text: String(text || 'ApkBuddyStart') }, 4000);
   }
   /**
-   * 给模拟器原生窗口设图标（独立窗口模式下任务栏/Alt+Tab 显示当前应用图标）。
-   * @param {string} file PNG/ICO 绝对路径
+   * Poner un icono a la ventana nativa del emulador (en modo independiente, barra de tareas/Alt+Tab muestran el icono de la app actual).
+   * @param {string} file ruta absoluta a PNG/ICO
    */
   async setIcon(file) {
     return this.call({ cmd: 'icon', file: String(file || '') }, 4000);
   }
   async probe() { return this.call({ cmd: 'probe' }, 4000); }
-  /** 列出当前可见的顶层窗口（用于验证「只有软件界面 / 只有安卓应用窗口」） */
+  /** Listar las ventanas de nivel superior visibles ahora (para verificar que «solo está la interfaz del software / solo la ventana de la app Android») */
   async windows() { return this.call({ cmd: 'windows' }, 4000); }
 
   /**
-   * 把头号可疑窗口「摘下 + 藏好」。
-   * 宿主窗口销毁前必须调用：Windows 会在父窗口销毁时把跨进程的子窗口重新挂到桌面，
-   * 并保持它原来的可见状态 —— 桌面上凭空多出来的 Android Emulator 黑窗就是这么来的。
-   * 代理很忙（可能在编译 C#）时也不能拖着不关窗，所以这里给 700ms 硬上限。
+   * «Descolgar y ocultar» la ventana más sospechosa.
+   * Debe llamarse antes de destruir la ventana anfitriona: Windows vuelve a colgar en el escritorio las ventanas hijas entre procesos
+   * cuando se destruye la ventana padre, y conserva su estado de visibilidad original — de ahí sale la ventana negra de Android Emulator
+   * que aparece de la nada en el escritorio.
+   * Aunque el agente esté ocupado (puede estar compilando C#), no se puede tardar en cerrar la ventana, por lo que se pone un límite duro de 700 ms.
    */
   async park(maxWaitMs = 700) {
     const call = this.call({ cmd: 'park' }, 2000).catch(() => ({ ok: false }));
@@ -241,14 +243,14 @@ class WinAgent extends EventEmitter {
   }
 
   /**
-   * 开启「常驻压制」：模拟器主窗（QWindowIcon）+ 工具栏 + qemu / netsimd 的控制台黑窗
-   * 一律不允许露面，只有被 embed 进我们窗口的那一个除外。
-   * 这是「打开软件只看到软件界面」的关键：emulator 拉起 detached 的 qemu / netsimd
-   * 控制台子进程，Node 的 windowsHide 覆盖不到它们，只能由窗口代理周期性压住。
-   * 现在模拟器还带 -qt-hide-window（窗口创建即隐藏），双保险，连第一帧都不会闪。
+   * Activar la «supresión residente»: la ventana principal del emulador (QWindowIcon) + la barra de herramientas + las ventanas negras de consola
+   * de qemu / netsimd no deben mostrarse nunca, salvo la que está acoplada a nuestra ventana.
+   * Esta es la clave de «al abrir el programa solo se ve la interfaz del programa»: el emulator lanza procesos de consola qemu / netsimd
+   * detached a los que no llega windowsHide de Node, y solo el agente de ventanas puede mantenerlos ocultos periódicamente.
+   * Ahora además el emulador lleva -qt-hide-window (la ventana se oculta al crearla), doble seguridad: ni el primer fotograma parpadea.
    *
-   * maxWaitMs：代理本身要现编译启动（几百毫秒，异常时可能十几秒）。调用点是在
-   * 「拉起模拟器之前」，绝不能因为代理起不来把开机拖住，所以这里给个硬上限。
+   * maxWaitMs: el propio agente hay que compilarlo y arrancarlo al momento (algunos cientos de ms, en casos anómalos puede ser decenas de segundos).
+   * El punto de llamada es «antes de lanzar el emulator»; un fallo del agente no puede retrasar el arranque, por eso se pone un límite duro.
    * @param {number} maxWaitMs
    */
   async bootHide(maxWaitMs = 3000) {
@@ -260,15 +262,15 @@ class WinAgent extends EventEmitter {
     ]);
   }
 
-  /** 关掉常驻压制（正常情况下不再需要：嵌入后压制会自动跳过被嵌入的那个窗口） */
+  /** Desactivar la supresión residente (normalmente ya no hace falta: tras acoplar, la supresión omite sola la ventana acoplada) */
   async bootShow() {
     return this.call({ cmd: 'boothide', on: 0 }, 4000).catch(() => ({ ok: false }));
   }
 
   /**
-   * 全局鼠标钩子开关（幂等）。
-   * 只在应用窗口前台、且至少一项映射开启时才安装；opts 变化时不重装线程，
-   * 只把新开关发给常驻代理，避免窗口反复 focus / 改设置时反复装卸钩子。
+   * Interruptor global del hook de ratón (idempotente).
+   * Solo se instala con la ventana de la app en primer plano y al menos una asignación activa; si cambian las opts no se reinstala el hilo,
+   * solo se envían los nuevos valores al agente residente, para evitar instalar/desinstalar el hook cada vez que se cambia el foco o los ajustes.
    * @param {boolean} on
    * @param {{rightBack?:boolean, wheel?:boolean, side?:boolean}} opts
    */
@@ -279,7 +281,7 @@ class WinAgent extends EventEmitter {
       wheel: !!(opts && opts.wheel),
       side: !!(opts && opts.side),
     };
-    // 默认关闭状态下不为了「关」而拉起 PowerShell 进程（冷启动零开销）
+    // Con el estado por defecto desactivado, no se lanza PowerShell «para desactivar» (coste cero en arranque en frío)
     if (!want && !this.hooked) return { ok: true, hooked: false };
     const sameConf = this.hookConf
       && this.hookConf.right === conf.right
@@ -299,7 +301,7 @@ class WinAgent extends EventEmitter {
   }
 
   dispose() {
-    // 先卸载全局钩子再结束进程：即使代理被强杀，也不给系统留残留钩子
+    // Primero se desinstala el hook global y después se termina el proceso: aunque el agente reciba un kill, no queda ningún hook residual en el sistema
     if (this.hooked && this.sock) {
       try { this.sock.write('{"cmd":"hook","on":0}\n'); } catch (_) { /* ignore */ }
     }
@@ -307,10 +309,10 @@ class WinAgent extends EventEmitter {
     this.hookConf = null;
     try { this.sock?.end(); } catch (_) { /* ignore */ }
     try { this.sock?.destroy(); } catch (_) { /* ignore */ }
-    // 故意不 kill 代理进程：断开连接后它会自己进入「守卫」状态（见 agent.ps1 的
-    // _lingerUntil）。模拟器可能还在开机，几十秒后才把窗口显示出来；那时如果
-    // 代理已经死了，桌面上就会留一个 Android Emulator 黑窗。模拟器进程消失后
-    // 代理会自行退出，最多守 3 分钟。
+    // Deliberadamente no se mata al proceso del agente: al desconectarse entra solo en estado de «guardia» (véase _lingerUntil en agent.ps1).
+    // El emulador puede seguir arrancando y mostrar la ventana decenas de segundos después; si para entonces el agente ha muerto,
+    // quedaría una ventana negra de Android Emulator en el escritorio. Cuando el proceso del emulador desaparece,
+    // el agente sale por sí solo, con un máximo de 3 minutos de guardia.
     this.sock = null;
     this.proc = null;
     this.ready = null;

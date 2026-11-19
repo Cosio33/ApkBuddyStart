@@ -13,7 +13,7 @@ Thumbs.db
 .vscode/
 .idea/
 
-# 运行时产物（本地下载，不入库）：二进制、镜像、AVD 数据一律排除
+# Artefactos del runtime (descargados localmente, no se versionan): se excluyen todos los binarios, imágenes y datos del AVD
 engine/qemu/
 engine/emulator/
 engine/system-images/
@@ -28,5 +28,5 @@ engine/*.qcow2
 tools/platform-tools/adb.exe
 tools/platform-tools/*.dll
 
-# 商店截图脚本的中间产物（可随时重生成）
+# Productos intermedios del script de capturas de la tienda (se pueden regenerar en cualquier momento)
 docs/store-shots/raw-*.png

@@ -1,24 +1,24 @@
 'use strict';
-/* ApkBuddyStart 开机动画脚本：接收主进程的进度更新，控制淡出 */
+/* Script de la animación de arranque de ApkBuddyStart: recibe el progreso del proceso principal y controla el desvanecimiento */
 
 const api = window.apkstartSplash;
-if (!api) { /* preload 未注入时静默退出 */ }
+if (!api) { /* si no se inyectó preload, salir silenciosamente */ }
 
 const $ = (id) => document.getElementById(id);
 
-// 版本号
+// Versión
 api?.version?.().then((v) => { if ($('ver')) $('ver').textContent = v || ''; }).catch(() => {});
 
-// 首次安装标记 + 组件是否随包自带
+// Marcador de primera instalación + si los componentes vienen incluidos
 Promise.all([
   api?.isFirstRun?.().catch(() => false),
   api?.bundled?.().catch(() => false),
 ]).then(([first, bundled]) => {
   if (!first || !$('firstRun')) return;
   $('firstRun').hidden = false;
-  // 内置运行时（完整版安装包 / 微软商店 MSIX 版）：一个字都不该提「下载」。
-  // 用户抱怨的就是「装了 850MB 还在下镜像」，实际那只是把包里的压缩镜像
-  // 展开到用户目录，不需要联网。
+  // Entorno de ejecución integrado (instalador completo / MSIX de Microsoft Store): no debe mencionarse en absoluto la «descarga».
+  // La queja del usuario era «instalé 850 MB y sigue descargando la imagen»; en realidad solo se extrae la imagen comprimida
+  // del paquete al directorio del usuario, sin conexión a la red.
   if (bundled) {
     if ($('firstRunTitle')) $('firstRunTitle').textContent = 'Primer arranque · preparación local (sin conexión)';
     if ($('firstRunList')) {
@@ -32,7 +32,7 @@ Promise.all([
   }
 }).catch(() => {});
 
-// 进度更新
+// Actualización del progreso
 api?.onProgress?.((p) => {
   if (!p) return;
   if (p.percent != null && $('progressBar')) {
@@ -43,7 +43,7 @@ api?.onProgress?.((p) => {
   }
 });
 
-// 完成 → 淡出
+// Completado → desvanecer
 api?.onDone?.(() => {
   const splash = $('splash');
   if (splash) {

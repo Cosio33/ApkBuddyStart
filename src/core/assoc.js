@@ -1,14 +1,14 @@
 'use strict';
 /**
- * .apk 文件关联（仅写 HKCU，不需要管理员权限）
- * 双击 apk → apkstart.exe "%1" → 自动安装 → 自动建桌面快捷方式
+ * Asociación de archivos .apk (solo escribe en HKCU, no necesita permisos de administrador)
+ * doble clic en apk → apkstart.exe "%1" → instalación automática → acceso directo automático en el escritorio
  */
 const { execFileSync } = require('child_process');
 
 const PROGID = 'ApkBuddyStart.apk';
 const EXT = '.apk';
 const CLASSES = 'HKCU\\Software\\Classes';
-// 关联前的「原默认程序」记在这里，卸载时原样还回去，别把用户的关联弄丢
+// La asociación «predeterminada original» se guarda aquí; al desinstalar se devuelve tal cual, para no perder la asociación del usuario
 const STORE_KEY = 'HKCU\\Software\\ApkBuddyStart';
 const PREV_VALUE = 'assocPrev';
 
@@ -21,7 +21,7 @@ function reg(args) {
   }
 }
 
-/** 读某个键的默认值（REG_SZ），读不到返回空串 */
+/** Lee el valor predeterminado de una clave (REG_SZ); devuelve cadena vacía si no se puede leer */
 function regDefault(key) {
   try {
     const out = execFileSync('reg', ['query', key, '/ve'], { windowsHide: true, encoding: 'utf8' });
@@ -33,7 +33,7 @@ function regDefault(key) {
   }
 }
 
-/** 读我们记下的「关联前默认值」 */
+/** Lee la «asociación anterior» que guardamos */
 function readPrev() {
   try {
     const out = execFileSync('reg', ['query', STORE_KEY, '/v', PREV_VALUE], { windowsHide: true, encoding: 'utf8' });
@@ -56,25 +56,26 @@ try {
     execFileSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', ps], {
       windowsHide: true, stdio: 'pipe', timeout: 8000,
     });
-  } catch (_) { /* 通知失败不影响关联本身 */ }
+  } catch (_) { /* que falle la notificación no afecta a la asociación */ }
 }
 
 /**
- * @param {string} exePath apkstart 主程序路径（开发模式下是 electron.exe）
- * @param {string} [iconPath] 可选 ico
- * @param {string} [extraArgs] 开发模式下需要先传应用目录，例如 "\"C:\\path\\apkstart\""
+ * @param {string} exePath ruta al ejecutable principal de ApkBuddyStart (en modo desarrollo es electron.exe)
+ * @param {string} [iconPath] ico opcional
+ * @param {string} [extraArgs] en modo desarrollo hay que pasar primero el directorio de la app, p. ej. "\"C:\\path\\apkstart\""
  */
 function registerAssociation(exePath, iconPath, extraArgs) {
   const icon = iconPath || exePath;
   const command = `"${exePath}" ${extraArgs ? extraArgs + ' ' : ''}"%1"`;
 
-  // 记住关联前 .apk 的默认程序：用户本来装了别的安卓工具时，卸载 ApkBuddyStart
-  // 之后应该还给他，而不是把 .apk 变成「没有默认程序」。
+  // Recordar el programa predeterminado de .apk antes de asociar: si el usuario ya tenía
+  // otra herramienta Android instalada, al desinstalar ApkBuddyStart hay devolvérsela,
+  // en vez de dejar .apk «sin programa predeterminado».
   const prev = regDefault(`${CLASSES}\\${EXT}`);
   if (prev && prev !== PROGID) {
     reg(['add', STORE_KEY, '/v', PREV_VALUE, '/d', prev, '/f']);
   } else if (!prev) {
-    try { execFileSync('reg', ['delete', STORE_KEY, '/v', PREV_VALUE, '/f'], { windowsHide: true, stdio: 'pipe' }); } catch (_) { /* 本来就没有 */ }
+    try { execFileSync('reg', ['delete', STORE_KEY, '/v', PREV_VALUE, '/f'], { windowsHide: true, stdio: 'pipe' }); } catch (_) { /* no existía */ }
   }
 
   reg(['add', `${CLASSES}\\${EXT}`, '/ve', '/d', PROGID, '/f']);
@@ -91,12 +92,13 @@ function registerAssociation(exePath, iconPath, extraArgs) {
 }
 
 /**
- * 取消关联。
- * 旧实现无条件把 .apk 的默认值清空（注释写了「仅当仍指向我们自己」，但代码没做），
- * 用户卸载 ApkBuddyStart 时会把原本的 .apk 关联一起抹掉。现在：
- *  1) 有关联前记录 → 原样还原；
- *  2) 没有记录且当前默认值仍是我们的 → 才清空；
- *  3) 当前默认值是别人的 → 一个字节都不动。
+ * Cancela la asociación.
+ * La implementación anterior borraba sin condiciones el valor predeterminado de .apk
+ * (el comentario decía «solo si aún apunta a nosotros», pero el código no lo hacía),
+ * así que al desinstalar ApkBuddyStart se borraba también la asociación original del usuario. Ahora:
+ *  1) Hay un registro previo → se restaura tal cual;
+ *  2) No hay registro y el valor actual sigue siendo el nuestro → se limpia;
+ *  3) El valor actual es de otro → no se toca ni un byte.
  */
 function unregisterAssociation() {
   reg(['delete', `${CLASSES}\\${EXT}\\OpenWithProgids`, '/v', PROGID, '/f']);

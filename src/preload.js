@@ -45,10 +45,10 @@ contextBridge.exposeInMainWorld('apkstart', {
   dataInfo: () => invoke('runtime:dataInfo'),
   setDataSize: (gb) => invoke('runtime:setDataSize', gb),
   resources: () => invoke('engine:resources'),
-  // 本机体检 / 自动配置
+  // Diagnóstico local / configuración automática
   preflightRun: () => invoke('preflight:run'),
   preflightApply: () => invoke('preflight:apply'),
-  // 驱动（兼容补丁）：列清单 / 导入 / 打开目录 / 导出本机模板 / 启用停用
+  // Controladores (parches de compatibilidad): listar / importar / abrir carpeta / exportar plantilla local / activar-desactivar
   driversList: () => invoke('drivers:list'),
   driversImport: () => invoke('drivers:import'),
   driversOpenFolder: () => invoke('drivers:openFolder'),
@@ -76,7 +76,7 @@ contextBridge.exposeInMainWorld('apkstart', {
   installAehd: () => invoke('provision:installAehd'),
   enableAccel: () => invoke('provision:enableAccel'),
   enableVirtualization: () => invoke('provision:enableVirtualization'),
-  // 打开「启用或关闭 Windows 功能」对话框（商店版只能引导用户自己去勾选）
+  // Abre el cuadro de diálogo «Activar o desactivar características de Windows» (la versión de la tienda solo puede guiar al usuario para que marque la opción)
   openWindowsFeatures: () => invoke('provision:openWindowsFeatures'),
   downloadIso: () => invoke('provision:downloadIso'),
   createDisk: (gb) => invoke('provision:createDisk', gb),
@@ -88,7 +88,7 @@ contextBridge.exposeInMainWorld('apkstart', {
   removeSelf: () => invoke('app:removeSelf'),
   setSharedDir: (dir) => invoke('settings:setSharedDir', dir),
 
-  // 在线更新（GitHub Releases）
+  // Actualización en línea (GitHub Releases)
   updateCheck: (opts) => invoke('app:updateCheck', opts || {}),
   updateApply: () => invoke('app:updateApply'),
   updateCancel: () => invoke('app:updateCancel'),
@@ -109,7 +109,7 @@ contextBridge.exposeInMainWorld('apkstart', {
   winHide: () => invoke('window:hide'),
   bringAppToFront: () => invoke('app:foreground'),
 
-  // 应用窗口（只有 旋转 / 最小化 / 最大化 / 关闭）用到的接口
+  // Interfaces utilizadas por la ventana de la aplicación (solo rotar / minimizar / maximizar / cerrar)
   shell: {
     state: () => invoke('shell:state'),
     minimize: () => invoke('shell:minimize'),
@@ -126,7 +126,7 @@ contextBridge.exposeInMainWorld('apkstart', {
     },
   },
 
-  // 安卓系统设置（WiFi / 音量 / 显示 / 动画 / 权限 …）
+  // Ajustes del sistema Android (WiFi / volumen / pantalla / animaciones / permisos …)
   android: {
     status: () => invoke('android:status'),
     set: (key, value) => invoke('android:set', { key, value }),
@@ -136,7 +136,7 @@ contextBridge.exposeInMainWorld('apkstart', {
     grantAll: (pkg) => invoke('android:grantAll', pkg),
   },
 
-  // 按键映射（游戏键盘→触屏）
+  // Mapeo de teclas (teclado de juego → pantalla táctil)
   keymap: {
     getPresets: () => invoke('keymap:getPresets'),
     getMap: (pkg) => invoke('keymap:getMap', pkg),

@@ -1,16 +1,19 @@
 'use strict';
 /**
- * 按键映射运行时引擎
+ * Motor de runtime de mapeo de teclas
  *
- * 在应用窗口前台时，拦截键盘事件 → 查当前应用的映射表 → 转成 adb input 命令。
- * 与 pointer.js（鼠标钩子）并行工作：鼠标走 Qt 原生 + 右键/滚轮钩子，
- * 键盘走这里。两者互不干扰。
+ * Cuando la ventana de la aplicación está en primer plano: intercepta eventos de teclado →
+ * consulta la tabla de mapeo de la aplicación actual → los convierte en comandos adb input.
+ * Trabaja en paralelo con pointer.js (gancho del ratón): el ratón usa Qt nativo + ganchos de
+ * botón derecho/rueda, y el teclado pasa por aquí. Ambos no se interfieren.
  *
- * 设计约束：
- *  - 纯 Node 模块，不依赖 Electron BrowserWindow（方便单测）；
- *  - adb 命令通过注入的 `execInput(cmd)` 回调发送，解耦 AdbClient；
- *  - 每条命令有最小间隔（默认 50ms），防止快速连按时 adb shell 排队卡死；
- *  - 映射表按应用包名存储，切换应用时自动切换。
+ * Restricciones de diseño:
+ *  - Módulo Node puro, sin dependencias de Electron BrowserWindow (facilita las pruebas unitarias);
+ *  - Los comandos adb se envían mediante el callback inyectado `execInput(cmd)`, desacoplando AdbClient;
+ *  - Cada comando tiene un intervalo mínimo (50 ms por defecto) para evitar que el adb shell se
+ *    atasque por acumulación de comandos al pulsar teclas rápido;
+ *  - Las tablas de mapeo se guardan por nombre de paquete de la aplicación y cambian automáticamente
+ *    al cambiar de aplicación.
  */
 
 const { lookup, toCommand } = require('./keymap');
@@ -18,9 +21,9 @@ const { lookup, toCommand } = require('./keymap');
 class KeymapEngine {
   /**
    * @param {object} opts
-   * @param {Function} opts.execInput  (cmd) => Promise — 发送 adb shell input 命令
-   * @param {Function} opts.getSize    () => {width, height} — 当前 LCD 尺寸
-   * @param {number}   [opts.minInterval=50]  两条命令之间的最小间隔（ms）
+   * @param {Function} opts.execInput  (cmd) => Promise — Envía comandos adb shell input
+   * @param {Function} opts.getSize    () => {width, height} — Tamaño actual del LCD
+   * @param {number}   [opts.minInterval=50]  Intervalo mínimo entre dos comandos (ms)
    */
   constructor({ execInput, getSize, minInterval = 50 } = {}) {
     this._exec = execInput || (() => Promise.resolve());
@@ -32,25 +35,25 @@ class KeymapEngine {
     this._maps = new Map();
   }
 
-  /** 设置某个应用的映射表 */
+  /** Establece la tabla de mapeo de una aplicación */
   setMap(pkg, mappings) {
     if (!pkg) return;
     if (!mappings || !mappings.length) { this._maps.delete(pkg); return; }
     this._maps.set(pkg, mappings);
   }
 
-  /** 获取某个应用的映射表 */
+  /** Obtiene la tabla de mapeo de una aplicación */
   getMap(pkg) { return this._maps.get(pkg) || []; }
 
-  /** 启用/禁用 */
+  /** Activar/desactivar */
   enable(on) { this._enabled = !!on; }
   get enabled() { return this._enabled; }
 
   /**
-   * 处理一个键盘事件。
+   * Procesa un evento de teclado.
    * @param {string} key Electron KeyboardEvent.key
-   * @param {string} pkg 当前前台应用包名
-   * @returns {Promise<boolean>} 是否消费了这个按键（true = 已映射并发送）
+   * @param {string} pkg Nombre de paquete de la aplicación en primer plano
+   * @returns {Promise<boolean>} Si se consumió la tecla (true = mapeada y enviada)
    */
   async handleKey(key, pkg) {
     if (!this._enabled || !pkg) return false;
@@ -61,12 +64,12 @@ class KeymapEngine {
     const { width, height } = this._getSize();
     const cmd = toCommand(hit, width, height);
     if (!cmd) return false;
-    // 限流：防止快速连按时 adb shell 排队
+    // Limitación de caudal: evita la acumulación de comandos en adb shell al pulsar rápido
     const now = Date.now();
     const wait = Math.max(0, this._minInterval - (now - this._lastExec));
     if (wait > 0) await new Promise((r) => setTimeout(r, wait));
     this._lastExec = Date.now();
-    try { await this._exec(cmd); } catch (_) { /* 输入注入失败不影响游戏 */ }
+    try { await this._exec(cmd); } catch (_) { /* Un fallo al inyectar la entrada no afecta al juego */ }
     return true;
   }
 }

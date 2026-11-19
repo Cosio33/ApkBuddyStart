@@ -39,7 +39,7 @@ body {
   height: 100vh;
 }
 
-/* ---------------- 标题栏 ---------------- */
+/* ---------------- Barra de título ---------------- */
 
 .titlebar {
   height: 44px;
@@ -51,7 +51,7 @@ body {
   background: var(--bg);
   border-bottom: 1px solid transparent;
   -webkit-app-region: drag;
-  padding-right: 148px; /* 给系统窗口按钮留位 */
+  padding-right: 148px; /* espacio reservado para los botones de ventana del sistema */
 }
 
 .brand { display: flex; align-items: center; gap: 8px; }
@@ -73,7 +73,7 @@ body {
   line-height: 16px;
 }
 .brand-tag.ok { color: var(--brand-dark); background: var(--brand-soft); }
-/* 状态标签兼作入口：点它进设置里的运行时面板 */
+/* La etiqueta de estado también sirve de acceso: haz clic para abrir el panel de ejecución en ajustes */
 .brand-tag { cursor: pointer; user-select: none; }
 .brand-tag:hover { filter: brightness(.97); }
 
@@ -89,7 +89,7 @@ body {
 }
 .icon-btn:hover { background: #edf0f3; color: var(--text); }
 
-/* ---------------- 布局 ---------------- */
+/* ---------------- Diseño ---------------- */
 
 .shell {
   flex: 1;
@@ -155,7 +155,7 @@ body {
 .btn.lg { height: 38px; padding: 0 18px; border-radius: 11px; }
 .btn:disabled { opacity: .55; cursor: default; }
 
-/* ---------------- 应用网格 ---------------- */
+/* ---------------- Cuadrícula de aplicaciones ---------------- */
 
 .content {
   flex: 1;
@@ -247,7 +247,7 @@ body {
 }
 .card:hover .open-hint { opacity: 1; transform: none; }
 
-/* ---------------- 空状态 ---------------- */
+/* ---------------- Estado vacío ---------------- */
 
 .empty {
   height: 100%;
@@ -262,7 +262,7 @@ body {
 .empty-art { opacity: .9; }
 .hint { margin-top: 14px !important; font-size: 11.5px !important; color: var(--faint) !important; }
 
-/* ---------------- 状态栏 ---------------- */
+/* ---------------- Barra de estado ---------------- */
 
 .statusbar {
   flex: 0 0 32px;
@@ -321,7 +321,7 @@ body {
 }
 @keyframes spin { to { transform: rotate(360deg); } }
 
-/* ---------------- 拖放 ---------------- */
+/* ---------------- Arrastrar y soltar ---------------- */
 
 .dropzone {
   position: fixed; inset: 0;
@@ -343,7 +343,7 @@ body {
 .dropzone-inner strong { font-size: 15px; color: var(--text); }
 .dropzone-inner span { font-size: 12px; color: var(--muted); }
 
-/* ---------------- 右键菜单 ---------------- */
+/* ---------------- Menú contextual ---------------- */
 
 .ctxmenu {
   position: fixed;
@@ -371,7 +371,7 @@ body {
 .ctxmenu .item .k { margin-left: auto; color: var(--faint); font-size: 11px; }
 .ctxmenu .divider { height: 1px; background: var(--line); margin: 5px 6px; }
 
-/* ---------------- 设置弹窗 ---------------- */
+/* ---------------- Ventana modal de ajustes ---------------- */
 
 .modal-mask {
   position: fixed; inset: 0;
@@ -504,7 +504,7 @@ body {
 .runtime-actions { display: flex; align-items: center; gap: 8px; margin: 2px 0 10px; }
 .inline-note { font-size: 11.5px; color: var(--faint); }
 
-/* 状态条上的自检计数：主界面不再放大横幅，问题只在底部提示，点开进设置 */
+/* Contador de autocomprobación en la barra de estado: la interfaz principal ya no muestra un gran banner; los problemas solo se indican abajo y al hacer clic se abre ajustes */
 .status-chip {
   height: 19px; padding: 0 8px; margin-left: 2px;
   font-size: 11px; line-height: 17px;
@@ -516,7 +516,7 @@ body {
 .status-chip:hover { filter: brightness(.97); }
 .status-chip[hidden] { display: none; }
 
-/* ---------------- 环境自检横幅 ---------------- */
+/* ---------------- Banner de autocomprobación del entorno ---------------- */
 
 .env-check {
   flex: 0 0 auto;
@@ -566,7 +566,7 @@ body {
   padding: 12px 14px; color: var(--brand-dark); font-size: 12.5px;
 }
 
-/* 设置里的运行时面板：自检块与旧向导样式内嵌化（不再整屏、不需要投影） */
+/* Panel de ejecución en ajustes: el bloque de autocomprobación y el estilo del antiguo asistente quedan integrados (ya no ocupa toda la pantalla ni necesita superposición) */
 .modal-body .env-check { margin: 6px 0 12px; box-shadow: none; }
 .modal-body .env-check-ok { padding: 10px 12px; }
 .modal-body .setup-guide { max-width: none; padding: 14px 16px; margin: 6px 0 4px; }
@@ -582,7 +582,7 @@ body {
 }
 .modal-foot .btn { margin-left: auto; }
 
-/* ---------------- 运行时部署向导 ---------------- */
+/* ---------------- Asistente de despliegue del entorno de ejecución ---------------- */
 
 .setup {
   flex: 1;
@@ -705,7 +705,7 @@ kbd {
 }
 .guide-foot { display: flex; gap: 10px; margin-top: 14px; }
 
-/* ---- 关于 / 品牌信息 ---- */
+/* ---- Acerca de / información de marca ---- */
 .about-box {
   display: flex;
   gap: 16px;
@@ -777,7 +777,7 @@ kbd {
 }
 .powered-link:hover { color: var(--text); text-decoration: underline; }
 
-/* 高级参数默认折叠：零配置体验，不把内部参数暴露给普通用户 */
+/* Los parámetros avanzados están plegados por defecto: experiencia sin configuración, sin exponer parámetros internos al usuario normal */
 .advanced-group {
   border-top: 1px solid var(--line, #e8ebf0);
   margin: 4px 0 0;
@@ -802,7 +802,7 @@ kbd {
 .advanced-group[open] > summary::before { transform: rotate(90deg); }
 .advanced-group[open] > summary { color: var(--text, #2b3138); }
 
-/* ---------------- 软件更新 ---------------- */
+/* ---------------- Actualización de software ---------------- */
 .update-bar {
   margin-top: 9px;
   height: 4px;
@@ -832,7 +832,7 @@ kbd {
   color: var(--text-2, #556);
 }
 
-/* 组内的小号折叠块（容器细节等） */
+/* Bloques plegables pequeños dentro del grupo (detalles del contenedor, etc.) */
 .mini-details {
   margin: 2px 0 6px;
   border: 1px dashed var(--line, #e8ebf0);
@@ -857,5 +857,5 @@ kbd {
 }
 .mini-details[open] > summary::before { transform: rotate(90deg); }
 
-/* 行内按钮不要折行（空间紧张时「立即扩容」会被拆成两行） */
+/* Los botones en línea no deben partirse (con poco espacio, «Ampliar ahora» se divide en dos líneas) */
 .row .btn { white-space: nowrap; flex: 0 0 auto; }

@@ -1,37 +1,37 @@
 'use strict';
 /**
- * 生成一个最小但**合法**的 ext4 空镜像，供 Android Emulator 作为 userdata 种子。
+ * Generar una imagen ext4 vacía mínima pero **válida**, para que Android Emulator la use como semilla de userdata.
  *
- * 为什么需要它（踩过的坑，别再重复）：
- * 1. 系统镜像包（system-images/.../userdata.img）里带的其实是一个 1MB 全零占位
- *    文件，真正的格式化应该由 avdmanager 调 SDK 的 mke2fs 完成。ApkBuddyStart 是直接
- *    写 config.ini 拉起 emulator 的，跳过了那一步 —— 于是 /data 一直是全零，
- *    内核报 "Invalid ext4 superblock on /dev/block/vdc"，guest 掉进
- *    recovery 重启循环，adbd 永远不上线。表现就是「点开应用等好几分钟最后失败」。
- *    （emulator 只带 e2fsck/resize2fs/tune2fs，**不带 mke2fs**，所以它自己也不会格式化。）
+ * Por qué hace falta (trampas ya pisadas, no repetirlas):
+ * 1. Lo que trae el paquete de imagen de sistema (system-images/.../userdata.img) es en realidad un archivo
+ *    de 1 MB lleno de ceros; el formateo real debería hacerlo avdmanager llamando a mke2fs del SDK. ApkBuddyStart
+ *    escribe directamente config.ini y arranca emulator, saltándose ese paso: /data queda a ceros,
+ *    el núcleo informa "Invalid ext4 superblock on /dev/block/vdc", el guest cae en un bucle de reinicio de
+ *    recovery y adbd nunca sale. El síntoma es «abres la app y esperas varios minutos para que falle al final».
+ *    (emulator solo incluye e2fsck/resize2fs/tune2fs, **no mke2fs**, así que tampoco formatearía por su cuenta.)
  *
- * 2. 块大小必须是 4096。Android 13 的 /data 走 metadata encryption，
- *    vold 会在 userdata 上叠一层 dm-default-key。该 dm 设备的逻辑块大小是
- *    4096，而内核 sb_set_blocksize() 要求 fs block size >= 逻辑块大小，
- *    用 1KB block 的镜像会得到 mount() = EINVAL，日志长得像这样：
+ * 2. El tamaño de bloque debe ser 4096. En Android 13, /data usa cifrado de metadatos,
+ *    y vold superpone una capa dm-default-key sobre userdata. El tamaño de bloque lógico de ese dispositivo dm
+ *    es 4096, y sb_set_blocksize() del núcleo exige que el tamaño de bloque del fs sea >= el tamaño de bloque lógico;
+ *    una imagen con bloques de 1 KB da mount() = EINVAL, con un log así:
  *      vold: [libfs_mgr] Cannot mount filesystem on /dev/block/dm-40 at /data: Invalid argument
  *      vold: fs_mgr_do_mount failed with rc -1
- *    换成 4KB block 就正常了。
+ *    Con bloques de 4 KB funciona correctamente.
  *
- * 3. 必须带 EXT4_FEATURE_INCOMPAT_ENCRYPT(0x10000)，否则 vold 的
- *    `cryptfs init_user0` 直接失败（exit 25）→ 又一次 recovery 重启。
+ * 3. Debe llevar EXT4_FEATURE_INCOMPAT_ENCRYPT(0x10000), o el `cryptfs init_user0` de vold
+ *    falla directamente (exit 25) → otro bucle de reinicio de recovery.
  *
- * 镜像只有 64MB，emulator 启动时会自己 resize 到 AVD 配置的 dataPartition 大小，
- * guest 里的 e2fsck/resize2fs 再把文件系统撑满，所以这里不需要大。
+ * La imagen mide solo 64 MB; al arrancar, emulator la redimensiona al tamaño de dataPartition configurado en el AVD,
+ * y luego e2fsck/resize2fs del guest expande el sistema de archivos, así que aquí no hace falta que sea grande.
  */
 
 const BLOCK = 4096;
 const INODE_SIZE = 128;
 const FIRST_INO = 11;
 
-// ext4 feature 位
-const COMPAT_EXT_ATTR = 0x8;    // 没它 setxattr 直接 EOPNOTSUPP：SELinux 标签写不进去，
-                                // netd / media / tombstoned 会一起 exit status 1
+// Bits de características de ext4
+const COMPAT_EXT_ATTR = 0x8;    // Sin él, setxattr devuelve EOPNOTSUPP: no se pueden escribir las etiquetas SELinux,
+                                // y netd / media / tombstoned salen todos con exit status 1
 const COMPAT_DIR_INDEX = 0x20;
 const INCOMPAT_FILETYPE = 0x2;
 const INCOMPAT_ENCRYPT = 0x10000;
@@ -40,15 +40,15 @@ const RO_COMPAT_LARGE_FILE = 0x2;
 
 /**
  * @param {{sizeMB?: number, encrypt?: boolean}} [opts]
- *   encrypt=false 时不带 ENCRYPT 位 —— 只用于「先让 emulator 自带的
- *   e2fsck/resize2fs（1.42.12，不认识 encrypt）先把文件系统扩到分区大小」，
- *   之后再把这个位补回去。
- * @returns {Buffer} 可直接写成 userdata 镜像的字节
+ *   Con encrypt=false no se pone el bit ENCRYPT: solo se usa para «dejar que el e2fsck/resize2fs
+ *   que trae emulator (1.42.12, no conoce encrypt) expanda primero el sistema de archivos hasta el tamaño de la partición»,
+ *   y después se vuelve a poner el bit.
+ * @returns {Buffer} bytes que se pueden escribir directamente como imagen userdata
  */
 function buildEmptyExt4(opts = {}) {
   const sizeMB = Math.max(8, Math.min(96, Math.round(opts.sizeMB || 64)));
   const blocks = Math.floor((sizeMB * 1024 * 1024) / BLOCK);
-  // 单 block group：4KB block 时一组最多 8*4096 = 32768 块（128MB）
+  // Un único grupo de bloques: con bloques de 4 KB, un grupo admite como máximo 8*4096 = 32768 bloques (128 MB)
   const blocksPerGroup = Math.min(blocks, 8 * BLOCK);
 
   let inodes = Math.max(256, Math.round(blocks / 4));
@@ -60,11 +60,11 @@ function buildEmptyExt4(opts = {}) {
   const IB_BLOCK = 3;
   const ITABLE_BLOCK = 4;
   const DIR_BLOCK = ITABLE_BLOCK + inodeTableBlocks;
-  const usedBlocks = DIR_BLOCK + 1; // 已占用块数（0..DIR_BLOCK）
+  const usedBlocks = DIR_BLOCK + 1; // Número de bloques ocupados (0..DIR_BLOCK)
 
   const buf = Buffer.alloc(blocks * BLOCK, 0);
   const now = Math.floor(Date.now() / 1000);
-  const sb = 1024; // 超级块固定在 1024 偏移处
+  const sb = 1024; // El superbloque está fijo en el desplazamiento 1024
 
   // ---------- superblock ----------
   const reserved = Math.floor(blocks * 0.05);
@@ -72,10 +72,10 @@ function buildEmptyExt4(opts = {}) {
   buf.writeUInt32LE(blocks, sb + 0x04);                       // s_blocks_count_lo
   buf.writeUInt32LE(reserved, sb + 0x08);                     // s_r_blocks_count
   buf.writeUInt32LE(blocks - usedBlocks, sb + 0x0C);          // s_free_blocks_count
-  buf.writeUInt32LE(inodes - (FIRST_INO - 1), sb + 0x10);     // s_free_inodes_count（要扣掉 1~10 号保留）
-  buf.writeUInt32LE(0, sb + 0x14);                            // s_first_data_block（4K 时为 0）
+  buf.writeUInt32LE(inodes - (FIRST_INO - 1), sb + 0x10);     // s_free_inodes_count (hay que descontar los inodos reservados 1~10)
+  buf.writeUInt32LE(0, sb + 0x14);                            // s_first_data_block (0 con bloques de 4K)
   buf.writeUInt32LE(2, sb + 0x18);                            // s_log_block_size = 2 → 4096
-  buf.writeUInt32LE(2, sb + 0x1C);                            // s_log_cluster_size（必须等于 block size，否则 EINVAL）
+  buf.writeUInt32LE(2, sb + 0x1C);                            // s_log_cluster_size (debe igualar el tamaño de bloque, o EINVAL)
   buf.writeUInt32LE(blocksPerGroup, sb + 0x20);               // s_blocks_per_group
   buf.writeUInt32LE(blocksPerGroup, sb + 0x24);               // s_clusters_per_group
   buf.writeUInt32LE(inodes, sb + 0x28);                       // s_inodes_per_group
@@ -85,7 +85,7 @@ function buildEmptyExt4(opts = {}) {
   buf.writeUInt16LE(0xFFFF, sb + 0x36);                       // s_max_mnt_count
   buf.writeUInt16LE(0xEF53, sb + 0x38);                       // magic
   buf.writeUInt16LE(1, sb + 0x3A);                            // s_state = clean
-  buf.writeUInt16LE(1, sb + 0x3C);                            // s_errors = continue（千万别留 0）
+  buf.writeUInt16LE(1, sb + 0x3C);                            // s_errors = continue (nunca dejar 0)
   buf.writeUInt16LE(0, sb + 0x3E);                            // s_minor_rev_level
   buf.writeUInt32LE(now, sb + 0x40);                          // s_lastcheck
   buf.writeUInt32LE(0, sb + 0x44);                            // s_checkinterval
@@ -105,11 +105,11 @@ function buildEmptyExt4(opts = {}) {
   buf.writeUInt32LE(0, sb + 0xC8);                             // s_algorithm_usage_bitmap
   buf.writeUInt8(0, sb + 0xCC + 1);                            // s_prealloc_blocks
   buf.writeUInt8(0, sb + 0xCE);
-  // 支持的加密算法：1 = AES-256-XTS，2 = AES-256-CTS（Android 默认组合）
+  // Algoritmos de cifrado admitidos: 1 = AES-256-XTS, 2 = AES-256-CTS (combinación por defecto de Android)
   buf.writeUInt32LE(1, sb + 0x274);
   buf.writeUInt32LE(2, sb + 0x278);
   buf.writeUInt8(2, sb + 0xFC);                                // s_def_hash_version = half_md4
-  buf.writeUInt16LE(0, sb + 0xFE);                             // s_desc_size（非 64bit 用 0）
+  buf.writeUInt16LE(0, sb + 0xFE);                             // s_desc_size (0 si no es 64bit)
 
   // ---------- group descriptor（block 1）----------
   const gd = GD_BLOCK * BLOCK;
@@ -126,12 +126,12 @@ function buildEmptyExt4(opts = {}) {
   for (let blk = 0; blk < usedBlocks; blk += 1) {
     buf[bb + (blk >> 3)] |= 1 << (blk & 7);
   }
-  // 超出实际块数的 padding bit 必须置 1（位图按 blocks_per_group 铺满）
+  // Los bits de padding que superan el número real de bloques deben ponerse a 1 (el mapa de bits se rellena hasta blocks_per_group)
   for (let bit = blocks; bit < blocksPerGroup; bit += 1) {
     buf[bb + (bit >> 3)] |= 1 << (bit & 7);
   }
 
-  // ---------- inode bitmap（block 3）：1..10 预留给系统 ----------
+  // ---------- Mapa de bits de inodos (bloque 3): 1..10 reservados para el sistema ----------
   const ib = IB_BLOCK * BLOCK;
   for (let i = 0; i < FIRST_INO - 1; i += 1) {
     buf[ib + (i >> 3)] |= 1 << (i & 7);
@@ -148,11 +148,11 @@ function buildEmptyExt4(opts = {}) {
   buf.writeUInt32LE(0, rootOff + 0x14);             // i_dtime
   buf.writeUInt16LE(0, rootOff + 0x18);             // i_gid
   buf.writeUInt16LE(2, rootOff + 0x1A);             // i_links_count
-  buf.writeUInt32LE(BLOCK / 512, rootOff + 0x1C);   // i_blocks（512B 单位）
+  buf.writeUInt32LE(BLOCK / 512, rootOff + 0x1C);   // i_blocks (en unidades de 512B)
   buf.writeUInt32LE(0, rootOff + 0x20);             // i_flags
-  buf.writeUInt32LE(DIR_BLOCK, rootOff + 0x28);     // i_block[0]（无 extents，走直接块）
+  buf.writeUInt32LE(DIR_BLOCK, rootOff + 0x28);     // i_block[0] (sin extents, se usan bloques directos)
 
-  // ---------- root 目录数据块 ----------
+  // ---------- Bloque de datos del directorio root ----------
   const dir = DIR_BLOCK * BLOCK;
   buf.writeUInt32LE(2, dir + 0);                    // "." → inode 2
   buf.writeUInt16LE(12, dir + 4);
@@ -169,7 +169,7 @@ function buildEmptyExt4(opts = {}) {
   return buf;
 }
 
-/** 判断一个镜像是否带合法 ext4 魔数（用于自愈：全零/损坏就重建） */
+/** Comprobar si una imagen lleva la magia ext4 válida (para autorreparación: si está a ceros/dañada, se reconstruye) */
 function hasExt4Superblock(file) {
   let fd;
   try {
@@ -188,10 +188,10 @@ function hasExt4Superblock(file) {
 }
 
 /**
- * 把 ENCRYPT（fscrypt）特性位补回超级块。
- * 顺序很重要：必须先让 emulator 自带的 resize2fs 把文件系统扩到分区大小，
- * 再补这个位 —— 那套 cygwin 版 e2fsprogs 是 1.42.12，不认识 encrypt，
- * 带着这个位 e2fsck/resize2fs 会直接拒绝执行。
+ * Volver a poner el bit de característica ENCRYPT (fscrypt) en el superbloque.
+ * El orden importa: primero hay que dejar que el resize2fs que trae emulator expanda el sistema de archivos hasta el tamaño de la partición,
+ * y solo después poner el bit: esa versión cygwin de e2fsprogs es la 1.42.12 y no conoce encrypt,
+ * así que con el bit puesto e2fsck/resize2fs se niegan a trabajar.
  */
 function setEncryptFlag(file) {
   const fs = require('fs');
@@ -207,7 +207,7 @@ function setEncryptFlag(file) {
   }
 }
 
-/** resize2fs 之前要把 ENCRYPT 位摘掉（老版本 e2fsprogs 不认识它会拒绝执行） */
+/** Antes de resize2fs hay que quitar el bit ENCRYPT (las versiones antiguas de e2fsprogs se niegan si no lo entienden) */
 function clearEncryptFlag(file) {
   const fs = require('fs');
   const fd = fs.openSync(file, 'r+');
@@ -223,11 +223,11 @@ function clearEncryptFlag(file) {
 }
 
 /**
- * 读文件系统**自身**的容量（字节）。
- * 关键用途：镜像文件被 qemu-img 撑到 8GB，不代表里面的 ext4 也长到了 8GB。
- * 如果 resize2fs 没跑成功（老版本 qemu-img 参数顺序写错就会这样），
- * 文件看着有 6GB、安卓却只有 64MB 可用 —— 表现正是「装游戏/更新时空间不足」。
- * 这里直接读超级块的块数与块大小，判断要不要补一次 resize2fs。
+ * Leer la capacidad del propio sistema de archivos (en bytes).
+ * Uso clave: que qemu-img haya expandido el archivo de imagen a 8 GB no significa que el ext4 interior también haya crecido a 8 GB.
+ * Si resize2fs no se ejecutó con éxito (las versiones antiguas de qemu-img con los parámetros en orden equivocado hacen justo eso),
+ * el archivo parece de 6 GB pero Android solo tiene 64 MB libres: el síntoma es precisamente «falta espacio al instalar/actualizar un juego».
+ * Aquí se leen directamente el número de bloques y el tamaño de bloque del superbloque para decidir si hace falta otro resize2fs.
  */
 function fsBytes(file) {
   let fd;
