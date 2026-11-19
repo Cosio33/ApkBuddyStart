@@ -1,4 +1,4 @@
-# Capture the ApkStart main window (with embedded Android view) to PNG. v2
+# Capture the ApkBuddyStart main window (with embedded Android view) to PNG. v2
 param([string]$Out = "hongguo-final.png")
 $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName System.Drawing
@@ -26,7 +26,7 @@ $cb = [W4+EnumProc]{ param($h, $p)
   [void][W4]::GetWindowThreadProcessId($h, [ref]$pp)
   $proc = Get-Process -Id $pp -ErrorAction SilentlyContinue
   if (-not $proc) { return $true }
-  if ($proc.Name -ne 'ApkStart') { return $true }
+  if ($proc.Name -ne 'ApkBuddyStart') { return $true }
   $len = [W4]::GetWindowTextLength($h)
   $sb = New-Object System.Text.StringBuilder ($len + 2)
   [void][W4]::GetWindowText($h, $sb, $len + 2)
@@ -38,7 +38,7 @@ $cb = [W4+EnumProc]{ param($h, $p)
   return $true
 }
 [void][W4]::EnumWindows($cb, [IntPtr]::Zero)
-if ($found.Count -eq 0) { Write-Output 'ERR=no-ApkStart-window'; exit 1 }
+if ($found.Count -eq 0) { Write-Output 'ERR=no-ApkBuddyStart-window'; exit 1 }
 $win = $found | Sort-Object { $_.W * $_.H } -Descending | Select-Object -First 1
 Write-Output ("FOUND: '{0}' {1}x{2}" -f $win.Title, $win.W, $win.H)
 [void][W4]::ShowWindow($win.Hwnd, 9)

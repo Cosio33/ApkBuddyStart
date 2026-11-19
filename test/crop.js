@@ -1,5 +1,5 @@
 'use strict';
-// 裁剪 PNG：electron test/crop.js <in> <out> <x> <y> <w> <h> [scale]
+// Crop PNG: electron test/crop.js <in> <out> <x> <y> <w> <h> [scale]
 const { app, nativeImage } = require('electron');
 const fs = require('fs');
 const path = require('path');

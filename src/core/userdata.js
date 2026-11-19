@@ -4,7 +4,7 @@
  *
  * 为什么需要它（踩过的坑，别再重复）：
  * 1. 系统镜像包（system-images/.../userdata.img）里带的其实是一个 1MB 全零占位
- *    文件，真正的格式化应该由 avdmanager 调 SDK 的 mke2fs 完成。ApkStart 是直接
+ *    文件，真正的格式化应该由 avdmanager 调 SDK 的 mke2fs 完成。ApkBuddyStart 是直接
  *    写 config.ini 拉起 emulator 的，跳过了那一步 —— 于是 /data 一直是全零，
  *    内核报 "Invalid ext4 superblock on /dev/block/vdc"，guest 掉进
  *    recovery 重启循环，adbd 永远不上线。表现就是「点开应用等好几分钟最后失败」。

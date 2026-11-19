@@ -1,4 +1,4 @@
-# ApkStart window controller (ASCII-only source; Chinese text comes from UTF-8 JSON).
+# ApkBuddyStart window controller (ASCII-only source; Chinese text comes from UTF-8 JSON).
 # Pure Win32 P/Invoke, no compiled binary, no third party dependency.
 # Usage: powershell -NoProfile -ExecutionPolicy Bypass -File windowctl.ps1 params.json
 param([string]$JsonPath)

@@ -1,66 +1,53 @@
-# ApkStart v0.5.1
+# ApkBuddyStart v0.5.1
 
-这一版是**稳定性与观感**的收尾：把上一版实机走查中确认的 6 个问题逐个复现、修复、再验证。
-新版号主要用于微软商店——已经提交过 0.5.0 的话，用 `0.5.1.0` 才能覆盖升级。
+Esta versión es el remate de **estabilidad y aspecto**: se reproducen, corrigen y vuelven a verificar uno a uno los 6 problemas confirmados en la revisión en equipo real de la versión anterior.
+El nuevo número de versión obedece sobre todo a Microsoft Store: si ya enviaste la 0.5.0, hace falta `0.5.1.0` para sobrescribir la actualización.
 
-## 一、切换应用不再对着空屏等 40 秒
+## 1. Cambiar de aplicación ya no significa mirar una pantalla vacía durante 40 s
 
-独立窗口模式下，壳窗口平时是不显示的（画面在模拟器自己的窗口里）。但切换到
-**屏幕方向不同**的应用时要重启运行时换面板，约 40 秒——这段时间桌面上原本一扇窗口都没有，
-用户只会以为程序崩了。
+En el modo de ventana independiente, la ventana cáscara normalmente no se muestra (la imagen está en la ventana propia del emulador). Pero al cambiar a una aplicación con **orientación de pantalla distinta** hay que reiniciar el runtime para cambiar el panel, unos 40 s; durante ese tiempo antes no había ninguna ventana en el escritorio y el usuario solo podía pensar que el programa se había cerrado.
 
-现在等待期间会显示一扇「正在为《红果短剧》切换到竖屏（重启安卓环境，约 40 秒，只需一次）…」
-的窗口，画面接上后自动收起。
+Ahora, durante la espera se muestra una ventana que dice «cambiando a vertical para «Hongguo, cortos» (reiniciando el entorno Android, unos 40 s, solo una vez)…» y se recoge automáticamente en cuanto se conecta la imagen.
 
-实测：t=2.1s 出现等待窗口，一直挂到 t=41.9s 画面接上，全程有交代。
+Prueba real: en t=2,1 s aparece la ventana de espera y sigue hasta t=41,9 s, cuando se conecta la imagen; en todo momento se sabe qué está pasando.
 
-## 二、不再误报「虚拟机没有网络，请重置安卓数据」
+## 2. Ya no se informa falsamente de «la máquina virtual no tiene red; restablece los datos de Android»
 
-Wi-Fi 关联 + DHCP 普遍比 `sys.boot_completed` 晚 5~20 秒，而旧实现只查一次就下结论，
-于是**每次冷启动**都会打一条 ⚠️：「安卓虚拟机当前没有网络…可在『设置 → 修复网络』重置安卓数据来修」。
+La asociación del Wi-Fi + DHCP suele ir de 5 a 20 s por detrás de `sys.boot_completed`, pero la implementación anterior comprobaba una sola vez y sacaba la conclusión; por eso **en cada arranque en frío** aparecía un ⚠️: «la máquina virtual Android no tiene ahora mismo red… puedes restablecer los datos de Android en «Ajustes → Reparar red»».
 
-这条提示本身是错的（几秒后就会自动连上），而它建议的补救手段会**删掉已装应用**。
+Ese aviso era falso (la red se conecta sola unos segundos después), y la solución que proponía **borra las aplicaciones instaladas**.
 
-现在给网络体检 12 秒等待窗口（就绪即返回），真超时才提示，且不再建议破坏性操作。
+Ahora la revisión de red dispone de una ventana de espera de 12 s (se devuelve en cuanto está lista), y solo se avisa si se agota de verdad; además, ya no se recomienda una acción destructiva.
 
-## 三、修复「换向重启后应用启动失败」
+## 3. Corrección: «fallo al arrancar la aplicación tras reiniciar por cambio de orientación»
 
-`emulator.exe` 只是启动器，spawn 完 qemu 自己就退出了，但进程对象一直留着。
-于是换面板重启后紧接着的 `ensure()` 会走到 `start()` 的「复用」快路径，拿到一个**已经关掉的**
-模拟器的 serial，后面所有 adb 命令报 `device not found` / `Can't find service: activity`，
-表现为「切换应用直接失败并弹回主界面」。
+`emulator.exe` es solo un lanzador: cuando termina de generar qemu, sale, pero el objeto de proceso se queda guardado. Como consecuencia, el `ensure()` que viene justo después de reiniciar por cambio de panel toma la vía rápida de «reutilizar» en `start()` y obtiene el serial de un emulador **ya apagado**; todos los comandos adb posteriores dan `device not found` / `Can't find service: activity`, lo que se manifestaba como «cambiar de aplicación falla directamente y vuelve a la interfaz principal».
 
-现在复用前必须确认控制台端口上真的有机器在跑；`stop()` 收尾也会清掉启动器句柄。
+Ahora, antes de reutilizar se confirma que haya una máquina funcionando en el puerto de consola; y `stop()` también limpia el identificador del lanzador.
 
-## 四、启动串行化
+## 4. Serialización de los arranques
 
-一次启动最长 80 秒（换面板 + 冷启动）。这期间再点一个应用，旧行为是**真的并发跑第二遍**：
-`openAppWindow` 把正在启动的应用关掉，而虚拟机又在重启，两边一起失败。
+Un arranque puede durar hasta 80 s (cambio de panel + arranque en frío). Si durante ese tiempo se pulsa otra aplicación, el comportamiento anterior era **ejecutar de verdad una segunda vez en paralelo**: `openAppWindow` cerraba la aplicación que se estaba arrancando mientras la máquina virtual se reiniciaba, y fallaban las dos.
 
-现在：同一个应用连点 = 只启动一次；换应用会排队等前一次收尾。
+Ahora: pulsar varias veces la misma aplicación = un solo arranque; cambiar de aplicación pone en cola y espera a que termine el arranque anterior.
 
-## 五、开机时的控制台黑框、以及新窗口闪上一个应用的名字
+## 5. La consola negra al arrancar y el nombre de una aplicación que parpadea en la ventana nueva
 
-- Win11 把默认控制台宿主换成 Windows Terminal 之后，qemu 的控制台窗口属于
-  `WindowsTerminal.exe`，pid / 父进程链 / 标题都认不出归属，于是每次开机都在屏幕上
-  闪 200~300ms 的黑框。现在用「开机前给控制台窗口拍快照 + 开机后 20 秒内新出现 +
-  标题为空或带 terminal」来认，并加了一条 100ms 的高频扫描通道（只在前 15 秒）。
-- 窗口代理缓存着上次设过的标题，而 `setTitle` 原本在 `show()` 之后，导致新窗口先显示
-  **上一个应用的名字**约 0.5 秒。现在标题在 `show` 之前就设好。
+- Tras Win11 cambiar el host de consola predeterminado a Windows Terminal, la ventana de consola de qemu pasa a pertenecer a `WindowsTerminal.exe` y no se puede reconocer la propiedad por pid / cadena de procesos padres / título; por eso en cada arranque parpadea en pantalla un recuadro negro de 200–300 ms. Ahora se reconoce con «instantánea de las ventanas de consola antes del arranque + ventana nueva en los 20 s posteriores + título vacío o con terminal», y se añade un canal de escaneo de alta frecuencia de 100 ms (solo durante los primeros 15 s).
+- El proxy de ventanas guarda en caché el último título que puso, y `setTitle` estaba después de `show()`, de modo que la ventana nueva mostraba durante unos 0,5 s el nombre **de la aplicación anterior**. Ahora el título se fija antes de `show`.
 
-## 六、文档：为什么 `adb devices` 看不到这台安卓设备
+## 6. Documentación: por qué `adb devices` no ve este dispositivo Android
 
-ApkStart 的 adb 服务跑在**专用端口 5044**（你自己的 adb 是 5037），这是刻意隔离。
-想连的话：`$env:ANDROID_ADB_SERVER_PORT = 5044` 再执行 `adb devices`。
-另外别对 5555 手动 `adb connect`——Play 版镜像会弹「允许 USB 调试吗」并盖在应用上。
+El servicio adb de ApkBuddyStart se ejecuta en un **puerto dedicado, el 5044** (tu propio adb usa el 5037); el aislamiento es intencionado. Para conectarte: `$env:ANDROID_ADB_SERVER_PORT = 5044` y luego ejecuta `adb devices`.
+Tampoco hagas `adb connect` a 5555 a mano: la imagen de Play Store muestra el diálogo «¿permitir depuración USB?» y se queda tapando la aplicación.
 
 ---
 
-## 微软商店
+## Microsoft Store
 
-- 包体：`dist/store/ApkStart_0.5.1.0_x64.msix`（x64，约 850 MB，内置完整运行时）
-- 身份：`RoutineMiku.ApkStart` / `CN=58CA1DED-8AB3-4D0D-AF50-62C9B781AA4D`
-- 升级：商店按四段版本号比较，`0.5.1.0 > 0.5.0.0`，可以直接覆盖已提交的 0.5.0
-- 上架材料见 `docs/store-listing.md`，步骤见 `docs/store-upload-walkthrough.md`
+- Paquete: `dist/store/ApkBuddyStart_0.5.1.0_x64.msix` (x64, unos 850 MB, runtime completo incluido)
+- Identidad: `RoutineMiku.ApkBuddyStart` / `CN=58CA1DED-8AB3-4D0D-AF50-62C9B781AA4D`
+- Actualización: Store compara la versión de cuatro partes, `0.5.1.0 > 0.5.0.0`, así que puede sobrescribir la 0.5.0 ya enviada
+- Los materiales de publicación están en `docs/store-listing.md` y los pasos en `docs/store-upload-walkthrough.md`
 
-测试：9 + 25 + 117 = 151 通过。
+Pruebas: 9 + 25 + 117 = 151 superadas.

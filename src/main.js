@@ -102,7 +102,7 @@ process.on('unhandledRejection', (e) => appLog(`REJECT ${e && (e.stack || e.mess
 
 /**
  * 完整版（内置运行时）自动接管：
- * 发行包里 ApkStart.exe 旁边带有 runtime/（emulator + platform-tools + AEHD + ARM 兼容镜像）。
+ * 发行包里 ApkBuddyStart.exe 旁边带有 runtime/（emulator + platform-tools + AEHD + ARM 兼容镜像）。
  * 首次启动（settings.json 尚不存在）时直接把 runtime.dir 指向它并开启兼容模式，
  * 用户无需任何下载与设置，开箱即用。之后用户仍可在设置里改回在线版。
  */
@@ -167,7 +167,7 @@ function bootstrapBundledRuntime() {
     const sameTree = path.resolve(current).toLowerCase()
       .startsWith(path.resolve(exeDir).toLowerCase());
     const currentOk = fs.existsSync(currentExe) && sameTree;
-    // 用户自己挑的目录（不在 EXE 目录树里，例如 D:\ApkStartRuntime 或别的盘）
+    // 用户自己挑的目录（不在 EXE 目录树里，例如 D:\ApkBuddyStartRuntime 或别的盘）
     // 一律尊重：他可能就是为了省 C 盘空间、或让多个便携版共用一个运行时。
     // 旧版在这里无条件覆盖成 exe 旁边的 bundled runtime，表现就是
     // 「设置里改了运行时数据目录，结果还是下到旧目录 / AppData」（issue #23）。
@@ -306,7 +306,7 @@ function displaySettings() { return store.getSettings().display || {}; }
  * Windows 任务栏 / 通知的身份。
  *
  * 为什么要按应用切换：每个安卓应用的桌面快捷方式都写了自己的 AUMID
- * （`RoutineMiku.ApkStart.<包名>`，见 installer.createShortcut），而且快捷方式的
+ * （`RoutineMiku.ApkBuddyStart.<包名>`，见 installer.createShortcut），而且快捷方式的
  * 图标是**那个应用自己的图标**。Windows 只有在「运行进程的 AUMID == 快捷方式的
  * AUMID」时，才会把正在运行的窗口和任务栏固定项合并成同一个按钮、并沿用快捷方式
  * 的图标。身份对不上就会出现「固定项是应用图标、任务栏上却另起一个 ApkBuddyStart 图标」。
@@ -315,7 +315,7 @@ function displaySettings() { return store.getSettings().display || {}; }
  * 一个进程跑多个应用的壳层就是这么做的）。这里只在开窗口之前切，且全程 try/catch ——
  * 万一某个 Windows 版本忽略它，也只是退化成按 exe 图标显示，不影响功能。
  */
-const APP_AUMID = 'RoutineMiku.ApkStart';
+const APP_AUMID = 'RoutineMiku.ApkBuddyStart';
 function setAumid(id) {
   try { app.setAppUserModelId(String(id || APP_AUMID).slice(0, 128)); } catch (_) { /* 非 Windows 或旧版本忽略 */ }
 }
@@ -586,6 +586,14 @@ async function autoDeploy({ force = false } = {}) {
     // 镜像已经在包里（压缩形态），第一次开机由 engine.ensure() 就地展开；
     // 这里再下一套 1.5GB 纯属浪费，也正是用户抱怨的「装完还在下镜像」。
     if (bundledRuntimeDir && env.adb.ok && env.emulator.ok && env.sysimg.ok) {
+      // 镜像随包自带 = 无需联网下载，这就是一种「成功」。
+      // 旧版没置 succeeded，finally 会误写 deployFailedAt，导致下次开机被冷却挡住、
+      // 连 engine.ensure() 的镜像展开重试都跳过 —— 用户看到「装完却一直用不了」。
+      succeeded = true;
+      // 镜像还在压缩态时，清掉历史失败标记，避免冷却阻止首次展开。
+      if (env.needsExtract) {
+        try { store.saveSettings({ runtime: { deployFailedAt: 0 } }); } catch (_) { /* ignorar */ }
+      }
       appLog(`autoDeploy omitido: el entorno de ejecución viene incluido en el paquete (${bundledRuntimeDir}), no se necesita conexión a la red`
         + (env.needsExtract ? ', la imagen se expandirá localmente en el primer arranque' : ''));
       return { ok: true, source: 'bundled', needsExtract: !!env.needsExtract };
@@ -2261,7 +2269,7 @@ function registerIpc() {
       try { await assoc.unregisterAssociation(); } catch (_) { /* 取消关联失败不影响卸载 */ }
       const exeDir = path.dirname(process.execPath);
       // 和 updater.flavor 用同一套识别规则：electron-builder 生成的是
-      // "Uninstall ApkStart.exe"，旧代码只找 "uninstaller.exe"，
+      // "Uninstall ApkBuddyStart.exe"，旧代码只找 "uninstaller.exe"，
       // 导致安装版点「一键卸载」被误判成便携版、只弹提示不真卸载（issue #51）。
       const unName = findUninstaller(exeDir);
       if (!unName) {

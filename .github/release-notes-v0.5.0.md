@@ -1,185 +1,128 @@
-# ApkStart v0.5.0
+# ApkBuddyStart v0.5.0
 
-这一版做了：**把「一直没网」彻底修好**、**启动快了一倍**、**多了 FydeOS 版本**，
-以及后面补的一批体验打磨（中文系统 / 中文输入法 / 窗口改名 / 旋转自愈 /
-下载与旧版本清理 / 点击跟手 / 省资源降内存）。
+Esta versión incluye: **la corrección definitiva de «siempre sin red»**, **un arranque dos veces más rápido**, **una nueva edición para FydeOS** y, añadidas después, una serie de mejoras de experiencia (sistema en chino / teclado chino / cambio de nombre de ventana / autosanación de rotación / descargas y limpieza de versiones antiguas / clics más responsivos / ahorro de recursos y memoria).
 
-## 〇·五、下载不再无限重下 + 任意位置旧版本可清理 + 点击跟手 + 省资源
+## 0,5. Descargas ya no se redescargan sin fin + se pueden limpiar versiones antiguas en cualquier carpeta + clics más responsivos + ahorro de recursos
 
-**下载失败不再留半截文件。** 以前所有失败路径都只抛异常不删文件，tmp 里永远
-躺着一个半截 zip + `.chunks.json` 边车；下次带 Range 续传时若服务器/源变了就拼不出
-正确字节 → 又失败 → 又留半截……每次打开都在重下同一个包。现在 `discardPartial()`
-在所有失败点（重试耗尽、写流中断、大小不符、校验失败、换源前、openStream 直接
-reject）统一清理。自动部署还加了 **30 分钟失败冷却**，手动点「一键部署」可立即重试。
+**Un fallo de descarga ya no deja archivos a medias.** Antes, todas las rutas de error lanzaban una excepción sin borrar el archivo, y en tmp quedaban para siempre un zip a medias junto con el archivo lateral `.chunks.json`. La siguiente vez, con una reanudación por Range, si el servidor o la fuente había cambiado, no se podían recomponer los bytes correctos → otro fallo → otro archivo a medias… y cada apertura volvía a descargar el mismo paquete. Ahora `discardPartial()` limpia de forma unificada en todos los puntos de error (reintentos agotados, interrupción de la escritura, tamaño incorrecto, fallo de verificación, antes de cambiar de fuente y rechazo directo de `openStream`). El despliegue automático añade además una **pausa de 30 minutos tras un fallo**; pulsar manualmente «desplegar con un clic» permite reintentar de inmediato.
 
-**其他文件夹里的旧版本能清掉了。** 清理器原来只扫当前 exe 父目录 + 两个固定
-Program 目录，便携版解压到别处就永远找不到。现在扩展扫描各磁盘根目录浅层 +
-Downloads/Desktop/Documents，并从桌面/开始菜单快捷方式反查真实安装目录。
-`.prev-*` 打包备份残留也纳入清理，且始终排除当前运行版本。本机实测从漏扫到发现
-24+ 个条目约 5.6GB。
+**Ahora se pueden limpiar versiones antiguas en otras carpetas.** El limpiador solo examinaba el directorio padre del exe actual y dos directorios de Program fijos, así que una versión portable descomprimida en otro lugar nunca se encontraba. Ahora amplía el análisis a las capas superficiales de la raíz de cada disco y a Downloads/Desktop/Documents, y además localiza el directorio de instalación real a partir de los accesos directos del escritorio y del menú Inicio. También se incluyen en la limpieza los restos de copias de seguridad empaquetadas `.prev-*`, excluyendo siempre la versión en ejecución. En pruebas en esta máquina, se pasó de no detectar nada a encontrar más de 24 entradas, unos 5,6 GB.
 
-**点击跟手 / 视频不掉帧。** 前台应用调度优先级从 `below` 提到 `normal`——below 会让
-qemu 在系统繁忙时被饿到，是「点击要等一下才响应、视频掉帧」的主因；normal 只是与
-桌面同档，不额外吃 CPU/内存/GPU。并且每次切回应用都重新提权，不会停在低优先级发木。
+**Clics más responsivos / el vídeo no pierde fotogramas.** La prioridad de programación de la aplicación en primer plano sube de `below` a `normal`: `below` dejaba qemu sin recursos cuando el sistema estaba ocupado, y esa era la causa principal de «hay que esperar un instante a que responda el clic y el vídeo pierde fotogramas». `normal` solo lo pone al mismo nivel que el escritorio, sin consumir más CPU/memoria/GPU. Además, cada vez que se vuelve a la aplicación se vuelve a subir la prioridad, para que no se quede ralentizada en un nivel bajo.
 
-**省资源模式降内存。** 「省资源」档位把虚拟机内存上限从 3GB 压到 2GB：qemu 常驻少
-约 1GB、快速启动快照也小 1GB（磁盘同步受益）。轻负载用不到 3G；手动指定内存时永远优先。
+**El modo ahorro de recursos usa menos memoria.** El nivel «ahorrar recursos» baja el límite de memoria de la máquina virtual de 3 GB a 2 GB: qemu consume unos 1 GB menos de forma residente y la instantánea de arranque rápido también es 1 GB más pequeña (lo que beneficia la sincronización de disco). Las cargas ligeras no necesitan 3 GB; si se especifica la memoria manualmente, ese valor tiene siempre prioridad.
 
-**横屏平板模式更稳。** 方向自愈原来只在画面躺倒时才动作；但横屏平板形态依赖两个易丢的
-运行时状态（忽略应用方向请求 + density 190），快照恢复/framework 重启后经常回到默认退回
-手机形态。现在没躺倒时也校验这两项并补齐（幂等，正常零写入）。
+**El modo tableta en horizontal es más estable.** Antes, la autosanación de orientación solo actuaba cuando la imagen estaba tumbada; pero el formato tableta en horizontal depende de dos estados de runtime fáciles de perder (ignorar las peticiones de orientación de la aplicación y density 190), que tras restaurar una instantánea o reiniciar el framework vuelven a los valores por defecto y retroceden al formato móvil. Ahora esos dos valores también se comprueban y se completan aunque la imagen no esté tumbada (es idempotente y, en condiciones normales, no escribe nada).
 
-> 关于「多窗口」：Google 模拟器单实例只有一块 framebuffer，无法在不新增模拟器的前提下
-> 拆成多个独立 Windows 原生窗口（投屏方案实测性能不可用）。因此本版维持单应用 + 快速切换，
-> 多窗口框架代码保留但默认关闭。真·多开需要付出每应用 +2~3GB 内存的代价，未纳入。
+> Sobre «varias ventanas»: una sola instancia del emulador de Google tiene un único framebuffer y no se puede dividir en varias ventanas nativas de Windows independientes sin añadir más emuladores (la opción de proyección de pantalla se probó y su rendimiento es inutilizable). Por eso esta versión mantiene una sola aplicación con cambio rápido; el código del marco multiventana se conserva pero está desactivado por defecto. El verdadero multiarranque tendría un coste de 2–3 GB de memoria adicionales por aplicación y no se ha incluido.
 
-## 零、中文系统、中文输入法、窗口改名、旋转自愈（后补）
+## Cero. Sistema en chino, teclado chino, cambio de nombre de ventana y autosanación de rotación (añadido después)
 
-**系统语言默认简体中文。** 这一步踩了个坑：`-prop persist.sys.locale=zh-CN` 完全无效
-（模拟器会拦截 `persist.sys.*`，`ro.product.locale` 又被 build.prop 覆盖），
-guest 里 `getprop` 一个都看不到。改用官方的 `-change-locale zh-CN` 后，系统设置页、
-权限弹窗、日期格式全部中文。它只在全量引导时生效，所以从旧英文快照恢复时会自动
-作废快照、冷启动一次（marker 保证一生只做一次），之后的新快照就是中文的。
-设置页可切简中 / 繁中 / 英 / 日 / 韩。
+**Idioma del sistema: chino simplificado por defecto.** Aquí hubo una trampa: `-prop persist.sys.locale=zh-CN` no hace nada en absoluto (el emulador intercepta `persist.sys.*` y `ro.product.locale` se sobrescribe desde build.prop), y en el invitado no se ve ni una con `getprop`. Al usar el oficial `-change-locale zh-CN`, la página de ajustes del sistema, los diálogos de permisos y el formato de fecha pasan todos a chino. Solo surte efecto en un arranque completo, así que al restaurar una instantánea antigua en inglés se invalida automáticamente y se hace un arranque en frío (un marcador garantiza que se haga una sola vez en toda la vida); las nuevas instantáneas ya serán en chino. En los ajustes se puede cambiar entre simplificado, tradicional, inglés, japonés y coreano.
 
-**中文输入法**：镜像只带英文键盘（LatinIME），随包带一个 AOSP 谷歌拼音输入法
-（`assets/PinyinIME.apk`，含 x86_64 原生库，1.6MB），开机静默安装并设为默认。
-修掉一个隐蔽 bug：`ime list -s` 只列**已启用**的输入法，用它判断「装没装」会在
-刚安装完误判为「服务未注册」，于是永远走不到 `ime enable`。设置页可关掉。
+**Teclado en chino**: la imagen solo trae el teclado inglés (LatinIME), así que se incluye en el paquete un teclado AOSP Pinyin de Google (`assets/PinyinIME.apk`, con bibliotecas nativas x86_64, 1,6 MB) que se instala silenciosamente al arrancar y se establece como predeterminado. Se corrigió un bug sutil: `ime list -s` solo enumera los teclados **habilitados**, así que usarlo para comprobar «si está instalado» daba un falso «servicio no registrado» justo después de instalarlo y nunca se llegaba a `ime enable`. Se puede desactivar en los ajustes.
 
-**窗口不再叫 "Android Emulator - apkstart:5554"**，改成当前应用名（如「红果免费短剧」）。
-窗口代理新增 `title` 命令，识别逻辑同步认新标题，巡检里持续补设（Qt 会自己改回去）。
+**La ventana ya no se llama "Android Emulator - apkstart:5554"**, sino con el nombre de la aplicación actual (por ejemplo, «Hongguo, cortos gratis»). El proxy de ventanas añade el comando `title`, reconoce también el nuevo título y sigue reintentándolo en las inspecciones (Qt vuelve a cambiarlo por su cuenta).
 
-**旋转 / 平板模式不再 90 度躺着**：根因是应用启动、Activity 重建会把刚锁好的方向
-覆盖回去，而之前是一次性设置。现在读 `dumpsys window displays` 的 `init`/`cur`，
-两者宽高顺序相反就说明逻辑空间被转了 90°，立即重新锁方向；看门狗每 60 秒巡检
-（只有真躺倒才写），应用起来后再补一次。
+**Rotación / modo tableta ya no se quedan tumbados 90°**: la causa raíz era que arrancar la aplicación y recrear la Activity sobrescribían la orientación recién bloqueada, y antes solo se fijaba una vez. Ahora se leen los valores `init`/`cur` de `dumpsys window displays`; si el orden de ancho y alto está invertido entre ambos, significa que el espacio lógico se giró 90° y se vuelve a bloquear de inmediato; un perro guardián inspecciona cada 60 s (solo escribe si está realmente tumbado) y se vuelve a aplicar una vez más después de arrancar la aplicación.
 
-**网络**再补一层：`checkNetwork` 增加真实 HTTP 可达性探测（结论放 `reachable`，
-不影响启动判定），联网验证端点改成国内 204 端点并每次启动幂等写入，
-系统不再给网络打「!」标记。
+**Otra capa para la red**: `checkNetwork` añade una sonda real de accesibilidad HTTP (el resultado se guarda en `reachable` y no afecta a la decisión de arranque); el punto de verificación de red se cambia a un endpoint 204 nacional y se escribe de forma idempotente en cada arranque, de modo que el sistema deja de marcar la red con «!».
 
-## 一、虚拟机联网：从「永远连不上」到真正能加载内容
+## 1. Red de la máquina virtual: de «nunca conecta» a poder cargar contenido de verdad
 
-这是从项目开始就没解决过的问题 —— 红果首页一直显示「网络错误，请稍后重试」，
-日志里每次启动都报「虚拟机没有网络」。原因不止一个，是三层叠在一起：
+Este es un problema que llevaba sin resolverse desde el inicio del proyecto: la portada de Hongguo mostraba siempre «error de red, inténtelo de nuevo más tarde» y el registro informaba en cada arranque de que «la máquina virtual no tiene red». La causa no era una sola, sino tres capas acumuladas:
 
-**第一层：AVD 配置里根本没有 `hw.wifi`**
+**Primera capa: la configuración del AVD no contenía `hw.wifi`.**
 
-API 34 的 Play Store 镜像上网走的是 `wlan0`（模拟器的虚拟 Wi-Fi），不是早期的
-`eth0`。`config.ini` 少了这一行，`wlan0` 就永远 `NO-CARRIER`，拿不到 IP。
+Las imágenes de Play Store de la API 34 salen a internet por `wlan0` (el Wi-Fi virtual del emulador), no por el `eth0` de antes. Si a `config.ini` le falta esa línea, `wlan0` queda siempre en `NO-CARRIER` y no obtiene IP.
 
-命令行的 `-netdelay` / `-netspeed` / `-dns-server` 只是 QEMU 用户态 NAT 的参数，
-跟 guest 内部网卡有没有被拉起来**完全无关** —— 所以之前一直调这些参数，一直没用。
+Los parámetros de línea de comandos `-netdelay` / `-netspeed` / `-dns-server` solo afectan al NAT en modo usuario de QEMU y **no tienen nada que ver** con que la tarjeta interna del invitado se haya levantado; por eso se llevaban años ajustándolos sin ningún efecto.
 
-**第二层：Wi-Fi 热点「已保存但不会自动连接」**
+**Segunda capa: el hotspot Wi-Fi «está guardado pero no se conecta automáticamente».**
 
-光有网卡还不够。模拟器自带的虚拟热点 `AndroidWifi` 在 Wi-Fi 配置库里会落成
-一条 `Saved / Won't automatically connect` 的记录，开机后不会自动连上。
+Tener la tarjeta no basta. El hotspot virtual del emulador `AndroidWifi` se registra en la base de datos de Wi-Fi como `Saved / Won't automatically connect` y no se conecta solo tras el arranque.
 
-想用命令行连也不行：`cmd wifi connect-network` 需要 `NETWORK_SETTINGS` 权限，
-adb shell（uid 2000）没有，直接抛 `SecurityException`。所以改成拉起 Wi-Fi 设置页、
-用 `uiautomator` 找到热点那一行点一下 —— 等同于用户手动点。
+Tampoco sirve hacerlo por línea de comandos: `cmd wifi connect-network` necesita el permiso `NETWORK_SETTINGS`, que adb shell (uid 2000) no tiene, y lanza `SecurityException`. Así que se cambia a abrir la página de ajustes de Wi-Fi y usar `uiautomator` para encontrar la fila del hotspot y pulsarla: equivale a que lo haga el usuario a mano.
 
-**第三层：系统一直给网络打「!」**
+**Tercera capa: el sistema seguía marcando la red con «!».**
 
-安卓拿 `connectivitycheck.gstatic.com` 判断「是否真能上网」，国内连不上它，
-系统就一直认为网络不可用。部分应用据此自我判定离线、拒绝加载。换成国内
-可达的 204 端点后，网络状态变成 `VALIDATED`。
+Android usa `connectivitycheck.gstatic.com` para decidir «si hay internet de verdad»; en China no se puede alcanzar, así que el sistema sigue creyendo que la red no sirve. Algunas aplicaciones lo interpretan como que están sin conexión y se niegan a cargar. Al cambiar a un endpoint 204 alcanzable desde China, el estado de la red pasa a `VALIDATED`.
 
-**顺带修掉两个把「修复」变成空转的调用错误**（都是日志打了、实际啥也没干）：
-`rt` 是 `ensure()` 的返回对象、只有 `client`，`repairWifi` 挂在 engine 上，
-写成 `rt.repairWifi` 得到 `undefined`，调用即抛错又被 `catch` 吞掉；
-`adbPath` 是方法，直接当路径传进去会让 adb 变成一段函数源码。
+**Se corrigen también dos errores de llamada que convertían la «reparación» en un trabajo en vano** (ambos escribían en el registro pero no hacían nada de verdad): `rt` es el objeto devuelto por `ensure()` y solo contiene `client`, mientras que `repairWifi` está en engine; escribir `rt.repairWifi` daba `undefined` y la llamada lanzaba un error que se tragaba `catch`; y `adbPath` es un método, por lo que pasarlo directamente como ruta convertía adb en el código fuente de una función.
 
-**修复策略也从「一上来就清用户数据」改成阶梯式**：先重连 Wi-Fi（不动数据）→
-再冷启动（不动数据）→ 最后才重置数据。启动路径上只做最轻的那一步。
+**La estrategia de reparación también cambia de «limpiar datos de usuario de entrada» a un esquema escalonado**: primero reconectar el Wi-Fi (sin tocar datos) → luego arranque en frío (sin tocar datos) → y solo al final restablecer los datos. En la ruta de arranque solo se hace el paso más ligero.
 
-> 实测：红果第 1 集正常出画面、有字幕、有剧集列表。
+> Prueba real: el episodio 1 de Hongguo muestra imagen, subtítulos y la lista de episodios con normalidad.
 
-## 二、速度：启动 53 秒 → 18 秒，点开应用 7.2 秒 → 3.0 秒
+## 2. Velocidad: arranque de 53 s a 18 s, apertura de una aplicación de 7,2 s a 3,0 s
 
-### 启动慢的大头不是开机，是每次都要重连 Wi-Fi
+### Lo que más ralentizaba el arranque no era el encendido, sino tener que reconectar el Wi-Fi cada vez
 
-之前每次开机都要等 22 秒超时 + 重连 13 秒。根因很隐蔽：快照只在「没有应用在前台」
-时才保存，可应用一起来就永远不空闲，于是「网络已连上」这个状态**从来没被存进快照**
-—— 下次又从断网的旧快照恢复。
+Antes, cada arranque esperaba 22 s a que agotara el tiempo de espera y luego otros 13 s de reconexión. La causa era muy sutil: la instantánea solo se guardaba cuando «no había ninguna aplicación en primer plano», pero en cuanto arranca una aplicación el sistema nunca está inactivo, así que el estado «red conectada» **jamás se guardaba en la instantánea**, y la vez siguiente se restauraba una instantánea antigua sin red.
 
-- 重连成功后立刻**强制**存一份快照（绕过空闲判断）。下一次开机 2 秒就确认网络就绪。
-- 等网络时遇到「Wi-Fi 未关联」连续 3 次就提前收工，不再死等超时。
+- Tras reconectar con éxito, se **fuerza** guardar una instantánea de inmediato (saltándose la comprobación de inactividad). Al siguiente arranque, la red se confirma lista en 2 s.
+- Al esperar la red, si aparece «Wi-Fi no asociado» tres veces seguidas, se termina antes de tiempo en lugar de esperar hasta agotar el tiempo de espera.
 
-| | 之前 | 现在 |
+| | Antes | Ahora |
 |---|---|---|
-| 完整启动 | 53s | **17.6s** |
-| 其中等网络 | 22s | 6.4s（仅在真的没网时） |
-| 网络重连 | 每次都要 | **一次，之后不再需要** |
+| Arranque completo | 53 s | **17,6 s** |
+| De los cuales, esperar la red | 22 s | 6,4 s (solo si realmente no hay red) |
+| Reconexión de red | cada vez | **una vez, y ya no hace falta** |
 
-### 点开应用：别再让用户「点了没反应」
+### Abrir una aplicación: que el usuario no tenga que «hacer clic y esperar»
 
-把链路拆开看，预热之后开机只剩 0.13 秒，大头变成「等应用活过来」：进程 2 秒就
-出现了，但我们为了确认它不会马上崩，又盯了 4 秒才把画面接上去。
+Desglosando la cadena, tras el precalentamiento el encendido solo tarda 0,13 s y el grueso pasa a ser «esperar a que la aplicación despierte»: el proceso aparece a los 2 s, pero, para asegurarnos de que no se fuera a cerrar de inmediato, seguíamos observándolo 4 s antes de conectar la imagen.
 
-现在改成**进程一出现就接画面**，那 4 秒的存活观察保留（它是防「闪一下就崩」的兜底），
-但改成后台并行跑，不再挡着用户看内容。
+Ahora se cambia a **conectar la imagen en cuanto aparece el proceso**. Esos 4 s de observación de supervivencia se mantienen (son un respaldo contra el «parpadea y se cierra»), pero se ejecutan en paralelo en segundo plano, sin bloquear al usuario mientras quiere ver el contenido.
 
 ```
-ensure done     +137ms    ← 冷启动时这里是 9.7 秒
+ensure done     +137ms    ← en arranque en frío aquí son 9,7 s
 am start ok    +1631ms
-app up         +2035ms    ← 进程出现，立刻接画面
-early attach   +2956ms    ← 窗口已经出现在桌面上
-alive #1       +6131ms    ← 存活确认，此时用户早就在看内容了
+app up         +2035ms    ← aparece el proceso, se conecta la imagen al instante
+early attach   +2956ms    ← la ventana ya aparece en el escritorio
+alive #1       +6131ms    ← confirmación de supervivencia; el usuario ya lleva rato viendo contenido
 ```
 
-**点开到出画面：7.2 秒 → 3.0 秒。**
+**Del clic a la imagen: de 7,2 s a 3,0 s.**
 
-另外把「预热」重新打开了：ApkStart 一打开就在后台把安卓环境引导好（约 10 秒，
-全程无窗口），之后点应用只剩一次 `am start`。这就是 WSA / 应用宝电脑版的做法。
+Además se vuelve a activar el «precalentamiento»: al abrir ApkBuddyStart, se arranca el entorno Android en segundo plano (unos 10 s, sin ninguna ventana visible), de modo que pulsar una aplicación después solo requiere un `am start`. Es lo que hacen WSA y la versión de escritorio de YingYongBao.
 
-## 三、界面
+## 3. Interfaz
 
-- **「添加应用」虚线卡片**：应用少的时候网格下面是一大片空白，用户也不知道还能干什么。
-  现在末尾有一张虚线卡片写着「拖入 APK 即可安装」，点击等同「安装 APK」按钮。
-- **状态栏显示网络**：`● 网络正常 10.0.2.16` / `虚拟机未联网`。
-  这个坑太隐蔽了 —— 应用里只显示「网络错误」，用户根本想不到是虚拟机没网。
-  为了不给状态轮询添负担，网络是后台探测一次然后缓存的（超过 5 分钟不采信）。
+- **Tarjeta discontinua «Añadir aplicación»**: cuando hay pocas aplicaciones, debajo de la cuadrícula queda un gran espacio en blanco y el usuario no sabe qué más puede hacer. Ahora, al final, hay una tarjeta discontinua que dice «arrastra un APK para instalarlo» y que al pulsar equivale al botón «instalar APK».
+- **La barra de estado muestra la red**: `● red correcta 10.0.2.16` / `máquina virtual sin conexión`.
+  Este detalle era muy difícil de detectar: dentro de la aplicación solo aparecía «error de red» y al usuario nunca se le ocurría que la máquina virtual no tenía red. Para no cargar el sondeo de estado, la red se detecta una vez en segundo plano y se guarda en caché (no se confía en ella después de 5 minutos).
 
-## 四、新增：FydeOS 版本
+## 4. Novedad: edición para FydeOS
 
-FydeOS（基于 ChromiumOS）本身就能跑安卓应用。在它上面再开一台安卓虚拟机是纯浪费：
-几个 GB 镜像、几秒开机、3GB 内存，全都是多余的。
+FydeOS (basado en ChromiumOS) ya puede ejecutar aplicaciones Android por sí solo. Abrir otra máquina virtual Android encima es un desperdicio puro: varios GB de imagen, varios segundos de arranque y 3 GB de memoria, todo innecesario.
 
-所以做了个 FydeOS 版：**减掉整层虚拟机**，只保留 ApkStart 真正有价值的部分
-（拖 APK 就装、自动生成桌面图标、一个应用一个窗口）。
+Así que se ha hecho una edición para FydeOS: **se elimina toda la capa de máquina virtual** y solo se conserva lo que ApkBuddyStart aporta de verdad (arrastrar un APK y se instala, generar automáticamente iconos de escritorio y una ventana por aplicación).
 
-在设置 → 运行时 → 引擎模式里选「FydeOS 安卓子系统」即可。
+Selecciona «subsistema Android de FydeOS» en Ajustes → Runtime → Modo de motor.
 
-**它做不到的事（先说清楚）**：不支持窗口嵌入。嵌入靠 Win32 的 `SetParent(HWND)`，
-而 ChromeOS 桌面是 Aura/Wayland，没有 HWND 这回事。好消息是独立窗口本来就是
-体验更好的那个模式。
+**Lo que no puede hacer (se dice desde el principio)**: no admite incrustación de ventanas. La incrustación usa `SetParent(HWND)` de Win32, y el escritorio de ChromeOS es Aura/Wayland, donde no existe eso de HWND. La buena noticia es que la ventana independiente era de todos modos el modo que da mejor experiencia.
 
-完整安装步骤、ADB 授权、以及已知的「一直 unauthorized」解法见
-[docs/fydeos.md](https://github.com/RoutineMiku/apkstart/blob/main/docs/fydeos.md)。
+Los pasos completos de instalación, la autorización ADB y la solución conocida al problema de «siempre unauthorized» están en
+[docs/fydeos.md](https://github.com/RoutineMiku/apkstart/blob/main/docs/fydeos.md).
 
-> **状态说明**：FydeOS 底座的逻辑（连接、授权、错误提示、能力声明）和 Linux 的
-> `.desktop` 生成都已有单元测试覆盖，但**尚未在真实 FydeOS 设备上跑过端到端流程**。
-> Linux 二进制也需要在 Linux 环境里 `npm run pack:linux` 构建（Windows 上交叉编译
-> 不出可用的 AppImage）。欢迎有设备的同学反馈。
+> **Nota sobre el estado**: la lógica de la base para FydeOS (conexión, autorización, mensajes de error y declaración de capacidades) y la generación de `.desktop` en Linux ya tienen cobertura con pruebas unitarias, pero **no se ha ejecutado un flujo completo de extremo a extremo en un dispositivo FydeOS real**. El binario de Linux también hay que compilarlo en un entorno Linux con `npm run pack:linux` (desde Windows no se puede generar un AppImage utilizable mediante compilación cruzada). Se agradece feedback a quienes tengan un dispositivo.
 
-## 五、底座选型说明
+## 5. Sobre la elección de la base
 
-顺手把「要不要换 Waydroid / WSA / 应用宝 / 换个轻量系统」彻底评估了一遍，结论在
-[docs/backend-roadmap.md](https://github.com/RoutineMiku/apkstart/blob/main/docs/backend-roadmap.md)。
-简要版：
+Aprovechamos para evaluar a fondo «si conviene cambiar a Waydroid / WSA / YingYongBao / otro sistema ligero»; las conclusiones están en
+[docs/backend-roadmap.md](https://github.com/RoutineMiku/apkstart/blob/main/docs/backend-roadmap.md).
+Versión resumida:
 
-| 方案 | 结论 |
-|------|------|
-| Waydroid + WSL2 | 要用 Hyper-V，和现在的 AEHD 加速**互斥**；且 x86 下跑不了 arm64-only 应用 |
-| 应用宝电脑版 | 闭源，无公开 API，不能嵌入也不能随我们分发 |
-| 微软 WSA | 2025-03 已停止支持，官方分发渠道关闭 |
-| FydeOS | ✅ 已做成独立版本（见上） |
+| Opción | Conclusión |
+|---|---|
+| Waydroid + WSL2 | Requiere Hyper-V, que es **mutuamente excluyente** con la aceleración AEHD actual; además, en x86 no puede ejecutar aplicaciones solo arm64 |
+| YingYongBao para PC | Código cerrado, sin API pública; no se puede incrustar ni distribuir junto a nosotros |
+| WSA de Microsoft | Dejó de recibir soporte en 2025-03 y los canales oficiales de distribución están cerrados |
+| FydeOS | ✅ Ya está hecho como versión independiente (ver arriba) |
 
-## 升级注意
+## Notas sobre la actualización
 
-- 配置文件位置不变，从 v0.4.x 直接覆盖即可。
-- 首次启动会走一次网络修复（约 13 秒），之后有了新快照就不再需要。
-- 窗口模式默认仍是嵌入；想试更省心的体验，到设置里切成**独立窗口**。
+- La ubicación del archivo de configuración no cambia; se puede sobrescribir directamente desde v0.4.x.
+- El primer inicio hará una reparación de red (unos 13 s); con la nueva instantánea, ya no hará falta.
+- El modo por defecto sigue siendo ventana incrustada; para una experiencia más tranquila, cambia a **ventana independiente** en los ajustes.

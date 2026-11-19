@@ -1,18 +1,18 @@
-# 便携 adb
+# adb portátil
 
-把 Android platform-tools 解压到本目录（应出现 `adb.exe`），ApkStart 会优先使用它：
+Extrae Android platform-tools en este directorio (debe aparecer `adb.exe`); ApkBuddyStart lo usará preferentemente:
 
 ```
 tools/platform-tools/
 └─ adb.exe
 ```
 
-下载地址：https://developer.android.com/tools/releases/platform-tools
+URL de descarga:https://developer.android.com/tools/releases/platform-tools
 
-如果本目录为空，ApkStart 会依次尝试：
+Si este directorio está vacío, ApkBuddyStart probará en este orden:
 
-1. 设置中手动指定的 adb 路径
-2. 本目录
+1. La ruta de adb indicada manualmente en la configuración
+2. Este directorio
 3. `%LOCALAPPDATA%\Android\Sdk\platform-tools\adb.exe`
-4. 常见模拟器自带的 adb（LDPlayer / MuMu / BlueStacks）
-5. 系统 PATH
+4. El adb incluido en emuladores habituales (LDPlayer / MuMu / BlueStacks)
+5. El PATH del sistema

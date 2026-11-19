@@ -1,6 +1,6 @@
-﻿# ApkStart window agent (ASCII only).
+﻿# ApkBuddyStart window agent (ASCII only).
 # A single long-lived helper that owns every Win32 trick we need:
-#   * re-parents the Android emulator Qt window into an ApkStart BrowserWindow (one clean window,
+#   * re-parents the Android emulator Qt window into an ApkBuddyStart BrowserWindow (one clean window,
 #     no emulator sidebar, no emulator title bar);
 #   * hides the floating emulator toolbar window that shows the volume/camera/back rail;
 #   * rotates the device with Ctrl+Left / Ctrl+Right and reports the new window size;
@@ -123,7 +123,7 @@ public class ApkAgent
     static long _embedAt = 0;
     // 常驻压制：默认一开机就开，把模拟器主窗 + 工具栏 + 控制台黑窗压住。
     // 与「embed 完成就关掉」的旧逻辑不同，它是**常驻**的 —— sweep 会跳过已经嵌进
-    // 我们窗口的那一个窗口，其余一律藏起来（含 ApkStart 退出后回到桌面的那个黑窗）。
+    // 我们窗口的那一个窗口，其余一律藏起来（含 ApkBuddyStart 退出后回到桌面的那个黑窗）。
     static volatile bool _quiet = true;
     static volatile bool _perfMode = false;
     static volatile bool _detachedMode = false;
@@ -132,7 +132,7 @@ public class ApkAgent
     // 新开一个窗口（Win11 上是 Windows Terminal），它只活 200~300ms；主巡检
     // 250ms 一轮抓不稳，所以前 15 秒额外用更密的节奏单独扫一遍控制台类窗口。
     static long _consoleSweep = 0;
-    // 兜底超时：万一 embed 没来（用户只是打开了 ApkStart 没点应用），
+    // 兜底超时：万一 embed 没来（用户只是打开了 ApkBuddyStart 没点应用），
     // 不能让 120ms 一轮的扫描永远跑下去白烧 CPU。每次真藏到窗口就续期。
     static long _bootHideUntil = 0;
     static long _bootHideStart = Environment.TickCount;
@@ -141,13 +141,13 @@ public class ApkAgent
 
     // Which windows count as "ours": only those created by a process whose exe lives
     // inside one of these directories (the runtime root / bundled engine dir).
-    // This is the whole fix for "ApkStart conflicts with WeChat": WeChat 4.x is Qt 6
+    // This is the whole fix for "ApkBuddyStart conflicts with WeChat": WeChat 4.x is Qt 6
     // too (its windows are QWindowIcon / QWindowToolSaveBits), so any matching that
     // relied on window class names alone could hide or even re-parent WeChat's own
     // windows. Class names are never unique; the owning process's path is.
     static readonly System.Collections.Generic.List<string> _scopeDirs = new System.Collections.Generic.List<string>();
     static readonly System.Collections.Generic.Dictionary<uint, bool> _oursCache = new System.Collections.Generic.Dictionary<uint, bool>();
-    // PID of the ApkStart main process. The only window we are ever allowed to embed
+    // PID of the ApkBuddyStart main process. The only window we are ever allowed to embed
     // into / swallow clicks for. Guard against a recycled HWND: if _host later belongs
     // to somebody else, the mouse hook must pass events through instead of eating them.
     static uint _appPid = 0;
@@ -285,7 +285,7 @@ public class ApkAgent
     // 用户看到的是一个全黑的应用窗口。改为「标题是 Android Emulator 就认，
     // 可见的大窗口优先」。工具栏 / 提示窗（QWindowTool）尺寸太小，被面积阈值挡掉。
     //
-    // ApkStart 会把这个窗口的标题改成应用名（见 "title" 命令），所以识别时
+    // ApkBuddyStart 会把这个窗口的标题改成应用名（见 "title" 命令），所以识别时
     // 必须同时认「改名后的标题」。用一个 volatile 字段记住我们设过的标题。
     public static string _ourTitle = "";
     // 应用图标文件路径：Qt 会在窗口重建时把图标改回默认绿机器人，巡检里持续补设。
@@ -530,7 +530,7 @@ public class ApkAgent
     }
 
     // 常驻压制扫描：只要模拟器窗口还不是「我们某个窗口的子窗口」，就把它藏起来。
-    // 这样无论模拟器是在开机、预热，还是 ApkStart 已经退出（窗口被系统重新挂到桌面，
+    // 这样无论模拟器是在开机、预热，还是 ApkBuddyStart 已经退出（窗口被系统重新挂到桌面，
     // 恢复成顶层窗口），用户都不会看到那个叫 "Android Emulator - apkstart5554" 的黑窗。
     // 同时把工具栏（QWindowTool）与所有控制台窗口（qemu / netsimd / emulator）压住。
 
@@ -563,7 +563,7 @@ public class ApkAgent
         if (_detachedMode)
         {
             // Qt 在分辨率变化/窗口重建时会把标题改回 "Android Emulator - ..."。
-            // 每轮巡检补设一次，保证任务栏里始终是 ApkStart（或应用名）。
+            // 每轮巡检补设一次，保证任务栏里始终是 ApkBuddyStart（或应用名）。
             if (_ourTitle.Length > 0 && _emu != IntPtr.Zero
                 && !String.Equals(TitleOf(_emu), _ourTitle, StringComparison.Ordinal))
                 SetWindowTextW(_emu, _ourTitle);
@@ -1144,7 +1144,7 @@ public class ApkAgent
 
             try
             {
-                // 连接已经断了（ApkStart 退出 / 异常崩溃）：不立刻收工。
+                // 连接已经断了（ApkBuddyStart 退出 / 异常崩溃）：不立刻收工。
                 // 模拟器可能还在开机，几十秒后 Qt 才把窗口显示出来 —— 那时如果
                 // 已经没有代理在盯着，桌面上就会留一个 Android Emulator 黑窗。
                 // 所以断线后继续「守」一会儿，直到最后一段时间没有模拟器进程。
@@ -1200,7 +1200,7 @@ public class ApkAgent
                         uint wantPid = 0;
                         if (want != IntPtr.Zero) GetWindowThreadProcessId(want, out wantPid);
                         // Never re-parent into a foreign window: a stale handle could
-                        // point at another app (the exact way "ApkStart ate WeChat's
+                        // point at another app (the exact way "ApkBuddyStart ate WeChat's
                         // window" can happen).
                         if (want == IntPtr.Zero || (_appPid != 0 && wantPid != _appPid))
                         {
@@ -1302,10 +1302,10 @@ public class ApkAgent
                     else if (cmd == "title")
                     {
                         // 把模拟器原生窗口的标题从 "Android Emulator - apkstart:5554"
-                        // 换成用户看得懂的名字（默认 "ApkStart"）。Qt 会在窗口重建时
+                        // 换成用户看得懂的名字（默认 "ApkBuddyStart"）。Qt 会在窗口重建时
                         // 把标题改回去，所以 QuietSweep 每轮巡检都会补设一次（见下）。
                         string t = S(line, "text");
-                        if (t.Length == 0) t = "ApkStart";
+                        if (t.Length == 0) t = "ApkBuddyStart";
                         _ourTitle = t;
                         if (_emu == IntPtr.Zero) _emu = FindEmulator();
                         bool ok = _emu != IntPtr.Zero && SetWindowTextW(_emu, t);

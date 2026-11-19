@@ -1,72 +1,72 @@
-# 抖音发布素材包 · ApkStart v0.2.2
+# Paquete de materiales para Douyin · ApkBuddyStart v0.2.2
 
-> 抖音目前没有对个人开放的图文/视频发布 API，也没有可用的自动发布通道。这份素材包已经把「选图 → 贴文案 → 加话题 → 发布」所需的全部内容备齐，按下面步骤 2 分钟即可发。
-> 安装包同样不能挂在抖音作品里：用主页简介 / 置顶评论 / 公众号关键词回复把读者引到 GitHub Release（第 5 张图里有下载二维码）。
+> Douyin no ofrece actualmente una API de publicación de imágenes/vídeos para particulares, ni un canal de publicación automática utilizable. Este paquete reúne todo lo necesario para «elegir imágenes → pegar el texto → añadir temas → publicar»; sigue los pasos de abajo y lo publicas en 2 minutos.
+> Tampoco se puede adjuntar el instalador a una publicación de Douyin: usa la biografía del perfil / el comentario fijado / la respuesta por palabra clave de la cuenta oficial para llevar al lector al Release de GitHub (el código QR de descarga está en la quinta imagen).
 
-## 一、作品标题（文案首句）
+## I. Título de la publicación (primera frase del texto)
 
-**自己写了个 Windows 安卓启动器，双击 .apk 就能用，还把字节系应用跑通了**
+**Escribí un lanzador de Android para Windows: con doble clic en un .apk ya funciona, y además conseguí que corrieran las apps de ByteDance**
 
-备选：
-- 不用装模拟器了！双击 APK 直接在电脑上跑安卓 App
-- 开源免费｜我给 Windows 写了个「安卓应用启动器」，完整版解压即用
+Alternativas:
+- ¡No hace falta instalar un emulador! Ejecuta apps de Android en el ordenador con doble clic en el APK
+- Código abierto y gratuito｜Le escribí a Windows un «lanzador de aplicaciones Android», y la versión completa funciona nada más descomprimirla
 
-## 二、正文文案（直接复制）
+## II. Texto principal (copiar directamente)
 
-以前在电脑上开个安卓 App 有多麻烦：下载几个 G 的模拟器、装环境、找 APK、拖进去，最后还可能弹一句「CPU 架构不匹配，装不上」。
+Antes, abrir una app de Android en el ordenador era un lío: descargar un emulador de varios GB, configurar el entorno, buscar un APK, arrastrarlo... y al final aún podía saltar un «la arquitectura de CPU no coincide, no se puede instalar».
 
-干脆自己写了一个：ApkStart 👇
+Así que escribí uno yo mismo: ApkBuddyStart 👇
 
-✅ 双击 .apk 就装，自动生成桌面快捷方式
-✅ 每个 App 一个独立窗口，互不打扰
-✅ 电脑和安卓共享文件夹，文件拖进去就能用
-✅ Google 官方引擎 + AEHD 硬件加速，壳层零依赖
+✅ Haz doble clic en un .apk y se instala; crea automáticamente un acceso directo en el escritorio
+✅ Cada app en su propia ventana independiente, sin molestarse entre sí
+✅ Carpeta compartida entre el ordenador y Android: arrastra un archivo y listo
+✅ Motor oficial de Google + aceleración por hardware AEHD, carcasa sin dependencias
 
-这次 v0.2.2 还干了两件狠活：
-🔥 完整版内置引擎 + Android 14 ARM 兼容镜像，解压双击直接进主界面，零下载零设置
-🔥 老镜像上必崩的字节系应用（实测红果短剧），换新版翻译层后：安装 → 推荐流 → 视频播放，全程不崩
+En esta v0.2.2 además hemos hecho dos cosas buenas:
+🔥 La versión completa incluye el motor y una imagen ARM compatible con Android 14: descomprime, haz doble clic y entras directamente en la interfaz principal, sin descargas ni configuración
+🔥 Las apps de ByteDance que antes siempre fallaban en imágenes antiguas (Hongguo Short Drama, probado en la práctica), con la nueva capa de traducción: instalar → recomendaciones → reproducción de vídeo, sin fallos en todo el proceso
 
-两个版本任选：轻量版 0.11GB（首启一键部署）／完整版 1.35GB（开箱即用）
-GitHub 搜 `RoutineMiku/apkstart`，点 Releases 下载，项目完全开源可自行编译 👀
+Elige entre dos versiones: ligera de 0,11 GB (despliegue con un clic en el primer inicio) / completa de 1,35 GB (lista para usar desde el principio)
+Busca `RoutineMiku/apkstart` en GitHub, entra en Releases y descarga; el proyecto es totalmente de código abierto y se puede compilar uno mismo 👀
 
-有问题评论区问我，或者来公众号 / 抖音 @日常MIKU 找我～
+Si tienes dudas, pregúntame en los comentarios o encuéntrame en la cuenta oficial / Douyin @DailyMIKU～
 
-#安卓模拟器 #开源项目 #Windows技巧 #效率工具 #程序员日常 #ApkStart #ARM兼容 #独立开发
+#EmuladorAndroid #ProyectoOpenSource #TrucosWindows #HerramientasDeProductividad #VidaDeProgramador #ApkBuddyStart #CompatibilidadARM #DesarrolloIndependiente
 
-## 三、话题标签（复制用）
+## III. Etiquetas de tema (para copiar)
 
-`#安卓模拟器` `#开源项目` `#Windows技巧` `#效率工具` `#程序员日常` `#ApkStart` `#独立开发` `#电脑技巧`
+`#EmuladorAndroid` `#ProyectoOpenSource` `#TrucosWindows` `#HerramientasDeProductividad` `#VidaDeProgramador` `#ApkBuddyStart` `#DesarrolloIndependiente` `#TrucosDeOrdenador`
 
-## 四、置顶评论
+## IV. Comentario fijado
 
-> 📦 安装包在这：GitHub 搜索 `RoutineMiku/apkstart` → Releases → v0.2.2
-> 轻量版 0.11GB（首启一键部署）｜完整版 1.35GB（内置引擎+镜像，解压即用）
-> 第 5 张图有下载二维码，长按识别就行。项目开源免费，觉得有用点个星 ⭐
+> 📦 El instalador está aquí: busca `RoutineMiku/apkstart` en GitHub → Releases → v0.2.2
+> Ligera de 0,11 GB (despliegue con un clic en el primer inicio)｜Completa de 1,35 GB (motor + imagen integrados, funciona al descomprimir)
+> La quinta imagen tiene el código QR de descarga; mantén pulsado para escanearlo. El proyecto es abierto y gratuito; si te resulta útil, dale una estrella ⭐
 
-## 五、图文发布步骤
+## V. Pasos para publicar el carrusel de imágenes
 
-1. 抖音 App → 「+」→ 选「图文」，按 `douyin-1.png` → `douyin-5.png` 顺序选 5 张图（`docs/promo/assets/`）
-2. 粘贴上面的「正文文案」，选一个标题
-3. 添加话题标签；第 5 张图自带下载二维码，可在图上再加「链接」贴纸指向主页
-4. 发布后把「置顶评论」设为置顶
-5. 若主页简介还没放链接，建议填 GitHub 仓库地址；想给安装包做更顺滑的转化，可用公众号关键词自动回复发 Release 链接
+1. App de Douyin → «+» → elige «Imágenes» y selecciona 5 fotos en orden `douyin-1.png` → `douyin-5.png` (`docs/promo/assets/`)
+2. Pega el «texto principal» de arriba y elige un título
+3. Añade las etiquetas de tema; la quinta imagen ya lleva el código QR de descarga, y puedes añadir además una pegatina de «enlace» que apunte al perfil
+4. Tras publicar, marca el «comentario fijado» como fijado
+5. Si aún no has puesto un enlace en la biografía del perfil, te conviene rellenar la dirección del repositorio de GitHub; para una conversión más fluida del instalador, puedes configurar la respuesta automática por palabra clave de la cuenta oficial para enviar el enlace del Release
 
-## 六、视频口播脚本（可选，约 35 秒）
+## VI. Guion de voz en off para el vídeo (opcional,unos 35 s)
 
-| 时间 | 画面 | 口播 |
+| Tiempo | Imagen | Voz en off |
 | --- | --- | --- |
-| 0-5s | 双击一个 .apk，应用窗口弹出 | 「电脑上跑安卓 App，你还在一整个模拟器？」 |
-| 5-12s | 桌面快捷方式、独立窗口并排 | 「我写了个启动器，双击 .apk 就装好，每个应用一个独立窗口。」 |
-| 12-22s | 设置面板开启 ARM 兼容模式 | 「带 ARM 库的应用过去直接装不上，新版内置 Android 14 兼容镜像，一键开启。」 |
-| 22-30s | 红果短剧播放画面 | 「实测红果短剧，安装、进推荐流、播视频，全程不崩。」 |
-| 30-35s | 第 5 张轮播图 | 「两个版本都开源免费，GitHub 搜 RoutineMiku/apkstart，二维码在这，自取。」 |
+| 0-5 s | Doble clic en un .apk y aparece la ventana de la app | «¿Sigues usando un emulador entero para ejecutar Android en el ordenador?» |
+| 5-12 s | Acceso directo del escritorio y ventanas independientes en paralelo | «Escribí un lanzador: doble clic en el .apk y se instala, y cada app tiene su propia ventana.» |
+| 12-22 s | Panel de ajustes activando el modo de compatibilidad ARM | «Las apps con bibliotecas ARM antes no se podían instalar; la versión nueva incluye una imagen compatible con Android 14 y se activa con un clic.» |
+| 22-30 s | Reproducción de Hongguo Short Drama | «Probado con Hongguo Short Drama: instalar, entrar en recomendaciones y reproducir vídeo, todo sin fallos.» |
+| 30-35 s | Quinta imagen del carrusel | «Ambas versiones son abiertas y gratuitas; busca RoutineMiku/apkstart en GitHub, aquí está el código QR, sírvete.» |
 
-## 七、图片清单
+## VII. Lista de imágenes
 
-| 文件 | 内容 |
+| Archivo | Contenido |
 | --- | --- |
-| `douyin-1.png` | 封面：Logo + 主标题 |
-| `douyin-2.png` | 痛点：下载慢 / 装不上 / 太臃肿 |
-| `douyin-3.png` | 四个特性 |
-| `douyin-4.png` | ARM 兼容突破（红果短剧实机截图） |
-| `douyin-5.png` | 两版本对照 + 下载二维码 + 抖音号 |
+| `douyin-1.png` | Portada: logotipo + título principal |
+| `douyin-2.png` | Punto de dolor: descarga lenta / no se instala / demasiado pesado |
+| `douyin-3.png` | Las cuatro características |
+| `douyin-4.png` | Avance en compatibilidad ARM (captura real de Hongguo Short Drama) |
+| `douyin-5.png` | Comparativa de versiones + código QR de descarga + usuario de Douyin |

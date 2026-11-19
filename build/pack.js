@@ -1,12 +1,12 @@
 'use strict';
 /**
- * 便携版打包：产出 dist/ApkStart-win64-portable/
- *   ApkStart.exe（electron.exe 改名 + 写入图标/版本资源）+ resources/app（本应用源码）
- * 无需安装器，解压即用。
+ * Empaquetado portátil: genera dist/ApkBuddyStart-win64-portable/
+ *   ApkBuddyStart.exe (electron.exe renombrado + icono y recursos de versión escritos) + resources/app (código de esta aplicación)
+ * Sin instalador: se descomprime y se usa directamente.
  *
- * --full（或 APKSTART_PACK_FULL=1）时产出「完整版」：
- *   额外把 build/runtime 复制进 resources/runtime，解压即用、首次启动不需要下载任何东西。
- *   输出目录默认 dist/ApkStart-v<版本>-win64-full，不会覆盖轻量版。
+ * --full (o APKSTART_PACK_FULL=1) genera la "versión completa":
+ *   copia además build/runtime en resources/runtime; al descomprimir funciona y el primer inicio no descarga nada.
+ *   El directorio de salida por defecto es dist/ApkBuddyStart-v<versión>-win64-full y no sobrescribe la versión ligera.
  */
 const fs = require('fs');
 const path = require('path');
@@ -16,40 +16,40 @@ const { assertStandalone } = require('./guard-standalone');
 const ROOT = path.join(__dirname, '..');
 const PKG = require(path.join(ROOT, 'package.json'));
 const FULL = process.argv.includes('--full') || process.env.APKSTART_PACK_FULL === '1';
-// 允许指定输出目录（用于目标目录被正在运行的实例占用时，先构建到别处再替换）
+// Permite especificar el directorio de salida (para compilar en otro sitio y reemplazar después si una instancia en ejecución ocupa el destino)
 let OUT = process.env.APKSTART_PACK_OUT
   ? path.resolve(process.env.APKSTART_PACK_OUT)
-  : path.join(ROOT, 'dist', FULL ? `ApkStart-v${PKG.version}-win64-full` : 'ApkStart-win64-portable');
+  : path.join(ROOT, 'dist', FULL ? `ApkBuddyStart-v${PKG.version}-win64-full` : 'ApkBuddyStart-win64-portable');
 const ELECTRON_DIST = path.join(ROOT, 'node_modules', 'electron', 'dist');
 
 function copy(src, dest) {
   fs.cpSync(src, dest, { recursive: true });
 }
 
-console.log(FULL ? '打包完整版（含运行时）→' : '打包便携版 →', OUT);
-// 目标已存在时不做整树删除：部分环境会拦截批量删除，且打包中途失败会丢掉
-// 上一个可用版本。改为先把旧目录改名保留，再全新构建；占用中则自动换目录。
+console.log(FULL ? 'Empaquetando versión completa (con runtime) →' : 'Empaquetando versión portátil →', OUT);
+// Si el destino ya existe, no se borra el árbol completo: algunos entornos bloquean las eliminaciones masivas y un fallo a mitad de empaquetado perdería
+// la última versión funcional. En su lugar, se renombra el directorio antiguo para conservarlo y se compila desde cero; si está ocupado, se cambia de directorio automáticamente.
 if (fs.existsSync(OUT)) {
   try {
     const backup = `${OUT}.prev-${new Date().toISOString().replace(/[:.]/g, '-')}`;
     fs.renameSync(OUT, backup);
-    console.log('旧版本已保留 →', backup);
+    console.log('Versión anterior conservada →', backup);
   } catch (_) {
-    // 某些环境（杀软 / 搜索索引 / 资源管理器）会长时间持有目录句柄，
-    // 整目录改名必然 EBUSY；这时退到带版本号的目录，产物一样可用且不再重名。
-    OUT = path.join(ROOT, 'dist', `ApkStart-v${require(path.join(ROOT, 'package.json')).version}-win64-portable`);
-    console.log('旧目录被占用，改输出到 →', OUT);
+    // Algunos entornos (antivirus / indexador de búsqueda / Explorador de archivos) mantienen el directorio abierto mucho tiempo,
+    // y renombrar el directorio completo da EBUSY; entonces se usa un directorio con número de versión, igual de válido y sin colisión de nombres.
+    OUT = path.join(ROOT, 'dist', `ApkBuddyStart-v${require(path.join(ROOT, 'package.json')).version}-win64-portable`);
+    console.log('Directorio antiguo ocupado; se cambia la salida a →', OUT);
   }
 }
 fs.mkdirSync(path.join(OUT, 'resources', 'app'), { recursive: true });
 
-// 1. Electron 运行时
-console.log('复制 Electron 运行时…');
+// 1. Runtime de Electron
+console.log('Copiando el runtime de Electron…');
 copy(ELECTRON_DIST, OUT);
 fs.rmSync(path.join(OUT, 'resources', 'default_app.asar'), { force: true });
 
-// 1.1 语言包瘦身：Electron 自带 55 种语言，合计 41MB，我们只用中文界面。
-//     只留 zh-CN / zh-TW / en-US，其余删掉（-39MB，等于整包小 15%）。
+// 1.1 Reducción de paquetes de idioma: Electron trae 55 idiomas (41 MB en total) y solo usamos la interfaz en chino.
+//     Se conservan solo zh-CN / zh-TW / en-US y se borran los demás (-39 MB, unos 15 % menos de paquete).
 const KEEP_LOCALES = new Set(['zh-CN.pak', 'zh-TW.pak', 'en-US.pak']);
 let localeSaved = 0;
 try {
@@ -59,42 +59,42 @@ try {
     localeSaved += (() => { try { return fs.statSync(path.join(locDir, f)).size; } catch (_) { return 0; } })();
     fs.rmSync(path.join(locDir, f), { force: true });
   }
-} catch (_) { /* 没有 locales 目录也不影响 */ }
+} catch (_) { /* No tener el directorio locales tampoco afecta */ }
 
-// 1.2 没人会点开的文件：更新日志、调试符号、部分无用的 pak（各自 0.1~9MB）
+// 1.2 Archivos que nadie abre: registros de cambios, símbolos de depuración y algunos pak inútiles (0,1~9 MB cada uno)
 for (const rel of ['LICENSES.chromium.html.bak', 'vk_swiftshader_icd.json.bak']) {
   fs.rmSync(path.join(OUT, rel), { force: true });
 }
 
-// 1.3 可省掉的运行库：
-//     d3dcompiler_47.dll 负责把 ANGLE 的 HLSL 编成 GPU 指令，但 Windows 8.1 起
-//     System32 里就自带同名 DLL，LoadLibrary 找不到包内那份会自然用系统的。
-//     实测删掉后界面/图标/字体渲染完全正常（--smoke 截图对比无差异）。压紧 2.1MB。
-//     注意：vk_swiftshader.dll / vulkan-1.dll 不能删 —— GPU 驱动不可用时 Chromium
-//     靠它做软件兜底，删了会白屏。
+// 1.3 Bibliotecas de ejecución que se pueden omitir:
+//     d3dcompiler_47.dll compila el HLSL de ANGLE a instrucciones de GPU, pero desde Windows 8.1
+//     System32 ya incluye una DLL con el mismo nombre; si LoadLibrary no encuentra la del paquete, usa la del sistema.
+//     En pruebas, tras borrarla la interfaz, los iconos y las fuentes se renderizan perfectamente (las capturas --smoke no muestran diferencias). Ahorra 2,1 MB.
+//     Atención: vk_swiftshader.dll / vulkan-1.dll no se pueden borrar: si el controlador GPU no está disponible, Chromium
+//     las usa como respaldo por software; borrarlas deja la pantalla en blanco.
 let pruneSaved = 0;
 for (const rel of ['d3dcompiler_47.dll']) {
   const p = path.join(OUT, rel);
   try {
     pruneSaved += fs.statSync(p).size;
     fs.rmSync(p, { force: true });
-  } catch (_) { /* 本来就没有 */ }
+  } catch (_) { /* No estaba presente de antemano */ }
 }
 
-// 2. 应用本体
-// assets/ 里是随包分发的资源：PinyinIME.apk（中文输入法），开机时由
-// Runtime.prepare() 静默装进安卓。漏掉它用户就打不了中文。
-console.log('复制应用…');
+// 2. La aplicación en sí
+// assets/ contiene los recursos distribuidos con el paquete: PinyinIME.apk (teclado chino), que se instala silenciosamente en Android
+// durante el arranque mediante Runtime.prepare(). Si falta, el usuario no podrá escribir en chino.
+console.log('Copiando la aplicación…');
 const appDir = path.join(OUT, 'resources', 'app');
 for (const item of ['package.json', 'src', 'assets', 'LICENSE']) {
   const src = path.join(ROOT, item);
   if (fs.existsSync(src)) copy(src, path.join(appDir, item));
 }
 
-// 3. 可选目录
-// engine/ 下只有文档类内容随包分发；大体积运行时组件（emulator、system-images、
-// platform-tools、avd）由应用首次启动时自动从官方源下载，不进安装包。
-// tools/ 是开发期自检脚本（黑窗实测、测速），用户用不到，不再随包分发。
+// 3. Directorios opcionales
+// Bajo engine/ solo se distribuye contenido documental; los componentes pesados del runtime (emulator, system-images,
+// platform-tools, avd) los descarga la aplicación automáticamente de fuentes oficiales en el primer inicio y no entran en el instalador.
+// tools/ contiene scripts de autocomprobación para desarrollo (pruebas en consola y mediciones); el usuario no los necesita y ya no se distribuyen.
 const ENGINE_SKIP = new Set(['emulator', 'system-images', 'platform-tools', 'avd', 'aehd', '_dl', 'qemu']);
 for (const opt of ['engine']) {
   const src = path.join(ROOT, opt);
@@ -107,38 +107,38 @@ for (const opt of ['engine']) {
   }
 }
 
-// 3.5 完整版：把运行时（emulator + platform-tools + 系统镜像）也放进去
+// 3.5 Versión completa: añadir también el runtime (emulator + platform-tools + imágenes de sistema)
 if (FULL) {
   const runtime = path.join(ROOT, 'build', 'runtime');
   const runtimeExe = path.join(runtime, 'emulator', 'emulator.exe');
   if (!fs.existsSync(runtimeExe)) {
-    console.error('\n[!] 找不到 build/runtime/emulator/emulator.exe。');
-    console.error('    先跑 node build/prepare-runtime.js（npm run runtime）生成运行时，再打完整版。\n');
+    console.error('\n[!] No se encuentra build/runtime/emulator/emulator.exe.');
+    console.error('    Ejecuta primero node build/prepare-runtime.js (npm run runtime) para generar el runtime y luego empaqueta la versión completa.\n');
     process.exit(1);
   }
-  console.log('内置运行时（约 1 GB，需要一会儿）…');
+  console.log('Runtime integrado (unos 1 GB, tardará un momento)…');
   fs.cpSync(runtime, path.join(OUT, 'resources', 'runtime'), { recursive: true });
 }
 
-// 3.6 独立运行守卫：产物里不许出现 MuMu / 雷电 / 蓝叠等第三方模拟器。
-// 命中就让构建失败 —— 这类问题只会在「别人的电脑」上暴露，本地永远测不出来。
-assertStandalone(path.join(OUT, 'resources'), { label: '便携版 resources' });
+// 3.6 Guardia de ejecución independiente: el resultado no debe contener MuMu / LDPlayer / BlueStacks ni otros emuladores de terceros.
+// Si hay coincidencia, la compilación falla: estos problemas solo aparecen en "ordenadores ajenos" y nunca se detectan en local.
+assertStandalone(path.join(OUT, 'resources'), { label: 'resources de la versión portátil' });
 
-// 4. 改名主程序
-const exePath = path.join(OUT, 'ApkStart.exe');
+// 4. Renombrar el ejecutable principal
+const exePath = path.join(OUT, 'ApkBuddyStart.exe');
 fs.renameSync(path.join(OUT, 'electron.exe'), exePath);
 
 /**
- * 给 ApkStart.exe 写入图标与版本资源。
+ * Escribir el icono y los recursos de versión en ApkBuddyStart.exe.
  *
- * 为什么必须做：直改名出来的 exe 里面还是 Electron 的东西 ——
- * FileDescription=Electron、ProductName=Electron、CompanyName=GitHub, Inc.、
- * 版本号 33.4.11，图标也是 Electron 的。于是资源管理器、任务栏固定项、
- * 快捷方式属性、杀软/系统信息里全显示「Electron」和默认图标，
- * 用户看到的就是「图标是默认的」。
+ * Por qué hay que hacerlo: un exe simplemente renombrado sigue siendo Electron por dentro:
+ * FileDescription=Electron, ProductName=Electron, CompanyName=GitHub, Inc.,
+ * versión 33.4.11 e icono de Electron también. Así, el Explorador de archivos, los accesos fijos de la barra de tareas,
+ * las propiedades de los accesos directos y el antivirus/la información del sistema muestran "Electron" y el icono por defecto,
+ * y el usuario ve "el icono es el de por defecto".
  *
- * rcedit 是 electron-builder / electron-winstaller 用的同一个工具，
- * 这里直接用 node_modules 里现成的那份，不需要联网。
+ * rcedit es la misma herramienta que usan electron-builder / electron-winstaller,
+ * aquí se usa directamente la copia ya presente en node_modules, sin necesidad de internet.
  */
 function embedExeMeta(exe) {
   const rcedit = [
@@ -146,45 +146,45 @@ function embedExeMeta(exe) {
     path.join(ROOT, 'node_modules', 'rcedit', 'bin', 'rcedit-x64.exe'),
   ].find((p) => fs.existsSync(p));
   if (!rcedit) {
-    console.warn('  [!] 找不到 rcedit.exe，exe 图标/版本信息保持 Electron 默认值');
+    console.warn('  [!] No se encuentra rcedit.exe; el icono y la versión del exe conservan los valores de Electron');
     return false;
   }
   const ico = path.join(ROOT, 'src', 'ui', 'assets', 'appicon.ico');
   if (!fs.existsSync(ico)) {
-    console.warn(`  [!] 找不到 ${ico}，跳过图标写入`);
+    console.warn(`  [!] No se encuentra ${ico};se omite la escritura del icono`);
     return false;
   }
   const args = [
     exe,
     '--set-icon', ico,
-    // 四段式文件版本（和 MSIX 的口径一致），产品版本用三段式
+    // Versión de archivo de cuatro segmentos (igual que en MSIX); la versión de producto usa tres segmentos
     '--set-file-version', `${PKG.version}.0`,
     '--set-product-version', PKG.version,
     '--set-version-string', 'ProductName', 'ApkBuddyStart',
-    '--set-version-string', 'FileDescription', 'ApkStart 安卓应用运行器',
+    '--set-version-string', 'FileDescription', 'ApkBuddyStart - Ejecutor de aplicaciones Android',
     '--set-version-string', 'CompanyName', PKG.author || 'RoutineMiku',
-    '--set-version-string', 'LegalCopyright', 'Copyright (c) 2026 ApkStart',
-    '--set-version-string', 'OriginalFilename', 'ApkStart.exe',
-    '--set-version-string', 'InternalName', 'ApkStart',
+    '--set-version-string', 'LegalCopyright', 'Copyright (c) 2026 ApkBuddyStart',
+    '--set-version-string', 'OriginalFilename', 'ApkBuddyStart.exe',
+    '--set-version-string', 'InternalName', 'ApkBuddyStart',
   ];
   try {
     execFileSync(rcedit, args, { stdio: 'pipe', windowsHide: true });
-    console.log(`  exe 图标/版本已写入（${PKG.version}，FileDescription=ApkStart 安卓应用运行器）`);
+    console.log(`  Icono/versión del exe escritos (${PKG.version}, FileDescription=ApkBuddyStart - Ejecutor de aplicaciones Android)`);
     return true;
   } catch (e) {
-    console.warn(`  [!] rcedit 失败：${e.message}`);
+    console.warn(`  [!] Error de rcedit: ${e.message}`);
     return false;
   }
 }
 embedExeMeta(exePath);
 
-// 5. 版本信息
+// 5. Información de versión
 const pkg = PKG;
-const fullNote = FULL ? '完整版（内置运行时，装完不联网）' : '轻量版（首次启动下载运行时）';
+const fullNote = FULL ? 'Versión completa (runtime integrado, sin conexión tras instalar)' : 'Versión ligera (descarga el runtime en el primer inicio)';
 fs.writeFileSync(path.join(OUT, 'VERSION.txt'),
-  `ApkStart ${pkg.version}\n${fullNote}\n构建时间：${new Date().toLocaleString('zh-CN')}\n`);
+  `ApkBuddyStart ${pkg.version}\n${fullNote}\nFecha de compilación:${new Date().toLocaleString('zh-CN')}\n`);
 
-// 6. 体积报告：每次打包都打印，避免以后又悄悄变胖
+// 6. Informe de tamaño: se imprime en cada empaquetado para evitar que vuelva a crecer sin avisar
 function dirSize(dir) {
   let n = 0;
   try {
@@ -197,9 +197,9 @@ function dirSize(dir) {
 }
 const totalMB = dirSize(OUT) / 1048576;
 console.log(
-  `完成。整包 ${totalMB.toFixed(0)} MB（语言包省了 ${(localeSaved / 1048576).toFixed(0)} MB，`
-  + `冗余运行库省了 ${(pruneSaved / 1048576).toFixed(1)} MB）。`,
+  `Completado. Paquete completo ${totalMB.toFixed(0)} MB (los paquetes de idioma ahorraron ${(localeSaved / 1048576).toFixed(0)} MB,`
+  + `las bibliotecas redundantes ahorraron ${(pruneSaved / 1048576).toFixed(1)} MB).`,
 );
-console.log('压缩：node build/zip.js ' + path.relative(ROOT, OUT) + ' <输出.zip>');
-console.log(`运行 ${path.join(OUT, 'ApkStart.exe')} 即可使用。`);
-if (!FULL) console.log('想要「一次下载、装完不联网」的完整版：node build/pack.js --full');
+console.log('Comprimir: node build/zip.js ' + path.relative(ROOT, OUT) + ' <salida.zip>');
+console.log(`Ejecuta ${path.join(OUT, 'ApkBuddyStart.exe')} para usarla.`);
+if (!FULL) console.log('Para la versión completa ("una descarga y sin conexión tras instalar"): node build/pack.js --full');

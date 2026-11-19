@@ -1,7 +1,7 @@
 'use strict';
 /**
  * 安卓系统设置：不需要进安卓桌面，也不用装第三方工具，
- * 直接通过 adb 把常用的系统开关做成 ApkStart 设置页里的按钮。
+ * 直接通过 adb 把常用的系统开关做成 ApkBuddyStart 设置页里的按钮。
  * 所有命令都是官方 shell 接口，不依赖 root。
  */
 const ACTIONS = {

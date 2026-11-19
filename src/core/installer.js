@@ -96,7 +96,7 @@ class Installer {
     if (this.ctx.startMenuDir && store.getSettings().createStartMenuShortcut !== false) {
       // 放在独立子目录：既能被 Windows 搜索索引到，又不会覆盖同名第三方应用的快捷方式
       // （实测「红果免费短剧」在开始菜单里已被另一个桌面助手占用）
-      out.push(path.join(this.ctx.startMenuDir, 'ApkStart', `${safeFileName(app.label)}${shortcutExt()}`));
+      out.push(path.join(this.ctx.startMenuDir, 'ApkBuddyStart', `${safeFileName(app.label)}${shortcutExt()}`));
     }
     return [...new Set(out)];
   }
@@ -240,7 +240,7 @@ class Installer {
     // 图标落盘。APK 图标大量是 WebP，nativeImage 解不了，交给渲染进程解码 +
     // 品牌占位图兜底，保证 .lnk 一定带图标（之前 icoPath 一直是 null）。
     // iconFallback 记录「真实图标解不出来、用了占位图」——这种要作为软警告告诉用户，
-    // 否则桌面上只有一片绿色三角，用户会以为是 ApkStart 弄错了图标。
+    // 否则桌面上只有一片绿色三角，用户会以为是 ApkBuddyStart 弄错了图标。
     let iconPath = null;
     let icoPath = null;
     let iconFallback = '';
@@ -351,10 +351,10 @@ class Installer {
       args,
       iconIcoPath: ico,
       iconPngPath: png,
-      description: `${app.label} — ejecutado por ApkStart`,
+      description: `${app.label} — ejecutado por ApkBuddyStart`,
       cwd: this.ctx.cwd,
-      // 每个应用一个 AUMID：任务栏上按应用分组，不会全挤到 ApkStart 里
-      appUserModelId: `RoutineMiku.ApkStart.${app.package}`.slice(0, 128),
+      // 每个应用一个 AUMID：任务栏上按应用分组，不会全挤到 ApkBuddyStart 里
+      appUserModelId: `RoutineMiku.ApkBuddyStart.${app.package}`.slice(0, 128),
     });
 
     let first = null;

@@ -1,42 +1,42 @@
-# 驱动（兼容补丁）
+# Controladores (parches de compatibilidad)
 
-> ApkStart 0.5.7 起支持「驱动」扩展：一个驱动 = 一份 JSON 文件，声明
-> **匹配哪些机器** + **命中后改哪些启动参数**。
-> 用户自己就能给「我这台机器」写补丁，不用等 ApkStart 发版。
+> A partir de ApkBuddyStart 0.5.7 se admite la extensión mediante «controladores»: un controlador = un archivo JSON que declara
+> **a qué máquinas coincide** + **qué parámetros de arranque se cambian al coincidir**.
+> El propio usuario puede escribir un parche para «su máquina» sin esperar a que ApkBuddyStart publique una versión.
 
 ---
 
-## 1. 它解决什么问题
+## 1. Qué problema resuelve
 
-同一份默认参数不可能在所有机器上都跑起来：
+Un mismo conjunto de parámetros por defecto no puede funcionar en todas las máquinas:
 
-- 老核显的 GLES 只到 3.1，用 `-gpu host` 时 guest 起来十几秒就崩；
-- 机器没开「虚拟机监控程序平台」，走硬件加速必然失败，要直接上软件模拟；
-- 某个显卡驱动版本一开 Vulkan 就黑屏，换 `swangle` 就好了；
-- 某些屏幕比例 / DPI 组合要改 `hw.lcd.density` 才不糊。
+- La GLES de una iGPU antigua solo llega a 3.1; con `-gpu host`, el guest arranca y se cae a los pocos segundos;
+- si la máquina no tiene activada la «plataforma de hipervisor», la aceleración por hardware fallará irremediablemente y hay que pasar directamente a emulación por software;
+- cierta versión del controlador de GPU presenta pantalla negra en cuanto se activa Vulkan, y con `swangle` se soluciona;
+- algunas combinaciones de proporción de pantalla / DPI requieren cambiar `hw.lcd.density` para que no se vea borroso.
 
-这些差异是**机器属性**，不是程序 bug。把判断写在代码里，等于每次都要发版；
-做成数据文件，用户（或社区）发现可用组合后，写一份 JSON 就能分享给别人。
+Estas diferencias son **propiedades de la máquina**, no errores del programa. Codificar las decisiones en el código implica tener que publicar una versión cada vez;
+haciéndolo en un archivo de datos, el usuario (o la comunidad) que encuentra una combinación válida puede compartirla escribiendo un JSON.
 
-## 2. 放在哪里
+## 2. Dónde se colocan
 
-| 目录 | 用途 |
+| Directorio | Uso |
 |---|---|
-| 设置 → 驱动 → **打开驱动目录** | 你自己的驱动，`%APPDATA%\apkstart\drivers\*.json`（商店版在 `%USERPROFILE%\ApkStart\data\drivers`） |
-| 安装目录 `resources/app/src/drivers/` | 内置示例，只读，默认 `enabled: false` |
+| Ajustes → Controladores → **Abrir directorio de controladores** | Tus propios controladores, `%APPDATA%\apkstart\drivers\*.json` (en la versión de tienda, `%USERPROFILE%\ApkBuddyStart\data\drivers`) |
+| Directorio de instalación `resources/app/src/drivers/` | Ejemplos integrados, solo lectura, con `enabled: false` por defecto |
 
-同 `id` 时**用户目录覆盖内置**：想改官方示例，导出/复制到用户目录再改即可，不用动安装目录。
+Con el mismo `id`, **el directorio del usuario prevalece sobre el integrado**: para modificar un ejemplo oficial, expórtalo/cópialo al directorio del usuario y edítalo, sin tocar el directorio de instalación.
 
-## 3. 一份驱动长什么样
+## 3. Cómo es un controlador
 
 ```json
 {
   "format": "apkstart-driver/1",
   "id": "amd-igpu-swangle",
-  "name": "AMD 核显改用 swangle 渲染",
+  "name": "AMD iGPU: usar renderizado swangle",
   "version": "1.0.0",
-  "author": "你的名字",
-  "description": "说明这台机器为什么要这么改，别人看了一目了然",
+  "author": "Tu nombre",
+  "description": "Explica por qué se aplica este cambio en esta máquina, para que otros lo entiendan de un vistazo",
   "priority": 0,
   "match": {
     "platform": ["win32"],
@@ -50,119 +50,119 @@
     "emulatorArgs": ["-feature=Vulkan"],
     "configIni": { "hw.gpu.mode": "swangle" },
     "env": { "ANDROID_EMUGL_VERBOSE": "1" },
-    "notes": ["如果还是黑屏，把 gpuMode 改成 software"]
+    "notes": ["Si sigue en pantalla negra, cambia gpuMode a software"]
   }
 }
 ```
 
-### 3.1 顶层字段
+### 3.1 Campos de nivel superior
 
-| 字段 | 必填 | 说明 |
+| Campo | Obligatorio | Descripción |
 |---|---|---|
-| `format` | ✅ | 固定 `apkstart-driver/1` |
-| `id` | ✅ | 字母数字和 `. _ -`，3~64 字符；导入时用它当文件名 |
-| `name` | ✅ | 界面上显示的名字（≤80 字） |
-| `version` | ✅ | 形如 `1.0.0`；改了补丁记得升版本 |
-| `author` / `description` / `homepage` | | 给人看的，方便别人判断能不能用 |
-| `enabled` | | 文件里的默认开关；内置示例都是 `false`。界面上的开关优先于它 |
-| `priority` | | `-100~100`，默认 0。**越大越晚应用**（覆盖先应用的） |
-| `match` | ✅ | 匹配条件，见 3.2 |
-| `effect` | ✅ | 命中后改什么，见 3.3 |
+| `format` | ✅ | Valor fijo `apkstart-driver/1` |
+| `id` | ✅ | Alfanuméricos y `. _ -`, de 3 a 64 caracteres; se usa como nombre de archivo al importar |
+| `name` | ✅ | Nombre mostrado en la interfaz (≤80 caracteres) |
+| `version` | ✅ | Con forma `1.0.0`; recuerda subir la versión al modificar el parche |
+| `author` / `description` / `homepage` | | Para las personas, para que otros puedan juzgar si les sirve |
+| `enabled` | | Interruptor por defecto en el archivo; los ejemplos integrados son `false`. El interruptor de la interfaz prevalece sobre este |
+| `priority` | | `-100~100`, por defecto 0. **A mayor valor, más tarde se aplica** (sobrescribe lo aplicado antes) |
+| `match` | ✅ | Condiciones de coincidencia, véase 3.2 |
+| `effect` | ✅ | Qué se cambia al coincidir, véase 3.3 |
 
-### 3.2 `match`：这台机器要不要用
+### 3.2 `match`: si esta máquina debe usar el controlador
 
-全部条件都必须满足（AND）；一个条件都没写等于不匹配，要「所有机器」请写 `{"any": true}`。
+Todas las condiciones deben cumplirse (AND); no escribir ninguna condición equivale a no coincidir; para «todas las máquinas», escribe `{"any": true}`.
 
-| 键 | 取值 | 说明 |
+| Clave | Valores | Descripción |
 |---|---|---|
-| `any` | `true` | 匹配所有机器（适合做基线兜底） |
+| `any` | `true` | Coincide con todas las máquinas (útil como línea base de respaldo) |
 | `platform` | `win32` / `linux` | |
 | `arch` | `x64` / `arm64` | |
-| `gpuVendor` | `nvidia` / `amd` / `intel` / `unknown` | 按显卡名粗分，可写数组 |
-| `gpuName` | 正则字符串（≤200 字） | 例如 `"radeon\\s+780m"`，大小写不敏感 |
-| `cpuVendor` | 字符串或数组 | 匹配 CPU 型号文本 |
-| `accel` | `whpx` / `aehd` / `none` | 当前硬件加速状态；`none` = 只能软件模拟 |
-| `osBuild` | 数字或 `{min,max}` | Windows 内部版本号，例如 22631 |
-| `totalMB` | `{min,max}` | 物理内存（MB） |
-| `cores` | `{min,max}` | 逻辑核心数 |
-| `emulatorVersion` | `{min,max}` | 按数字比较，`36.4.9 < 36.4.10` |
+| `gpuVendor` | `nvidia` / `amd` / `intel` / `unknown` | Clasificación burda por nombre de GPU; admite array |
+| `gpuName` | Cadena regex (≤200 caracteres) | Por ejemplo `"radeon\\s+780m"`, sin distinción de mayúsculas |
+| `cpuVendor` | Cadena o array | Coincide con el texto del modelo de CPU |
+| `accel` | `whpx` / `aehd` / `none` | Estado actual de aceleración por hardware; `none` = solo emulación por software |
+| `osBuild` | Número o `{min,max}` | Número de compilación interna de Windows, p. ej. 22631 |
+| `totalMB` | `{min,max}` | Memoria física (MB) |
+| `cores` | `{min,max}` | Número de núcleos lógicos |
+| `emulatorVersion` | `{min,max}` | Comparación numérica, `36.4.9 < 36.4.10` |
 
-设置页里每个驱动都会显示「命中：gpu=amd / accel=whpx」或「本机不匹配」，
-不用猜为什么没生效。
+En la página de ajustes, cada controlador muestra «Coincide: gpu=amd / accel=whpx» o «No coincide con esta máquina»,
+sin tener que adivinar por qué no se aplicó.
 
-### 3.3 `effect`：命中后改什么
+### 3.3 `effect`: qué se cambia al coincidir
 
-| 字段 | 说明 |
+| Campo | Descripción |
 |---|---|
-| `gpuMode` | 固定渲染后端：`auto` / `host` / `swangle` / `swiftshader` / `swiftshader_indirect` / `software`。`auto` = 不干预 |
-| `forceTcg` | `true` = 关掉硬件加速走软件模拟（等价于 `-accel off`） |
-| `emulatorArgs` | 追加给 emulator 的参数，`-flag=值` 形式，只允许白名单 |
-| `configIni` | 覆盖 AVD 的 `config.ini`，只允许白名单键 |
-| `env` | 追加环境变量，只放行 `ANDROID_` / `QEMU_` / `LIBGL_` / `MESA_` / `EMUGL_` 前缀 |
-| `notes` | 说明文字，开机日志与设置页会显示 |
+| `gpuMode` | Backend de renderizado fijo: `auto` / `host` / `swangle` / `swiftshader` / `swiftshader_indirect` / `software`. `auto` = no intervenir |
+| `forceTcg` | `true` = desactiva la aceleración por hardware y usa emulación por software (equivalente a `-accel off`) |
+| `emulatorArgs` | Argumentos adicionales para el emulator, en forma `-flag=valor`; solo se permiten los de la lista blanca |
+| `configIni` | Sobrescribe el `config.ini` del AVD; solo se permiten claves de la lista blanca |
+| `env` | Variables de entorno adicionales; solo se permiten los prefijos `ANDROID_` / `QEMU_` / `LIBGL_` / `MESA_` / `EMUGL_` |
+| `notes` | Texto explicativo; se muestra en el registro de arranque y en la página de ajustes |
 
-`gpuMode` 和 `forceTcg` 会作用于**每一轮**启动尝试（包括自动降级重试）：
-驱动说「这台机器只能用 swangle」，就没必要先拿崩过的后端试一遍。
+`gpuMode` y `forceTcg` se aplican en **cada ronda** de arranque (incluidos los reintentos de degradación automática):
+si el controlador dice «esta máquina solo puede usar swangle», no tiene sentido probar primero el backend que ya falló.
 
-## 4. 白名单：能改什么，为什么
+## 4. Lista blanca: qué se puede cambiar y por qué
 
-驱动文件可以从网上下载、互相传，所以 ApkStart 对它的权限卡得很死：
+Los archivos de controlador se pueden descargar de Internet y compartir, por lo que ApkBuddyStart limita sus permisos de forma estricta:
 
-**不允许执行任何代码**。驱动是纯 JSON，没有脚本钩子、没有 `eval`、不会 `require` 你写的文件。
+**No se permite ejecutar ningún código**. El controlador es JSON puro: sin hooks de script, sin `eval` y sin `require` de archivos escritos por el usuario.
 
-**`emulatorArgs` 只接受**
+**`emulatorArgs` solo acepta**
 
-| 参数 | 允许的取值 |
+| Parámetro | Valores permitidos |
 |---|---|
-| `-gpu` | 已知渲染后端（见上表） |
+| `-gpu` | Backends de renderizado conocidos (véase la tabla anterior) |
 | `-accel` | `auto` / `off` / `on` / `whpx` / `hax` / `haxm` / `aehd` / `tcg` |
-| `-feature` | 字母数字与 `_,.-`，≤160 字 |
+| `-feature` | Alfanuméricos y `_,.-`, ≤160 caracteres |
 | `-gltransport` | `pipe` / `asgpu` / `virtio` |
-| `-qemu` | 单个 qemu 参数，限字符集，≤120 字 |
-| 开关型 | `-no-audio` `-no-boot-anim` `-no-metrics` `-no-snapshot` `-no-snapshot-load` `-no-snapshot-save` |
+| `-qemu` | Un único parámetro qemu, conjunto de caracteres limitado, ≤120 caracteres |
+| Tipo interruptor | `-no-audio` `-no-boot-anim` `-no-metrics` `-no-snapshot` `-no-snapshot-load` `-no-snapshot-save` |
 
-明确拒绝：`-wipe-data`（清空应用与存档）、`-partition-size`、`-datadir`、`-sysdir`、
-`-avd`、`-port`、`-http-proxy`。这些要么毁数据，要么破坏 ApkStart 自己管理的落点。
+Se rechazan explícitamente: `-wipe-data` (borra aplicaciones y datos guardados), `-partition-size`, `-datadir`, `-sysdir`,
+`-avd`, `-port`, `-http-proxy`. Estos últimos destruyen datos o rompen las ubicaciones que ApkBuddyStart gestiona por su cuenta.
 
-**`configIni` 只接受**：`hw.gpu.mode`、`hw.gpu.enabled`、`hw.gltransport`、`hw.keyboard`、
-`hw.audioInput`、`hw.audioOutput`、`hw.camera.back`、`hw.camera.front`、`hw.gps`、
-`vm.heapSize`、`hw.lcd.density`。
-`disk.dataPartition.size`、`hw.ramSize`、`hw.cpu.ncore`、`image.sysdir.*` 一律拒绝 ——
-这些 ApkStart 自己会按设置写，混着改只会互相打架。
+**`configIni` solo acepta**: `hw.gpu.mode`, `hw.gpu.enabled`, `hw.gltransport`, `hw.keyboard`,
+`hw.audioInput`, `hw.audioOutput`, `hw.camera.back`, `hw.camera.front`, `hw.gps`,
+`vm.heapSize`, `hw.lcd.density`.
+`disk.dataPartition.size`, `hw.ramSize`, `hw.cpu.ncore`, `image.sysdir.*` se rechazan siempre:
+ApkBuddyStart ya los escribe según los ajustes, y mezclar cambios solo genera conflictos.
 
-**`env`**：`ANDROID_*`、`QEMU_*`、`LIBGL_*`、`MESA_*`、`EMUGL_*`；值 ≤200 字且不能带换行。
-`PATH`、`SystemRoot`、`NODE_OPTIONS` 这类会被直接拒。
+**`env`**: `ANDROID_*`, `QEMU_*`, `LIBGL_*`, `MESA_*`, `EMUGL_*`; valores ≤200 caracteres y sin saltos de línea.
+`PATH`, `SystemRoot`, `NODE_OPTIONS` y similares se rechazan directamente.
 
-## 5. 怎么做一份自己的驱动
+## 5. Cómo crear tu propio controlador
 
-1. 设置 → 驱动 → **导出本机模板**（`match` 已按当前机器填好，存到驱动目录）；
-2. 用记事本 / VS Code 打开，改 `effect`：
-   - 黑屏 / 花屏 → 先试 `"gpuMode": "swangle"`，还不行改 `"software"`；
-   - 机器没开硬件加速 → `"forceTcg": true`；
-   - 改完保存；
-3. 回设置页点 **刷新**，看到「本机匹配 / 已生效」；
-4. 打开一次应用验证，关机再开一次确认稳定；
-5. 想分享：把 JSON 发给别人，对方「导入驱动…」即可。
+1. Ajustes → Controladores → **Exportar plantilla de esta máquina** (`match` ya está rellenado según la máquina actual y se guarda en el directorio de controladores);
+2. Ábrelo con el Bloc de notas / VS Code y modifica `effect`:
+   - pantalla negra / artifacts → prueba primero `"gpuMode": "swangle"`, y si no funciona cambia a `"software"`;
+   - la máquina no tiene aceleración por hardware → `"forceTcg": true`;
+   - guarda los cambios;
+3. Vuelve a la página de ajustes y pulsa **Actualizar**; deberías ver «Coincide con esta máquina / En vigor»;
+4. Abre una aplicación una vez para verificarlo y apaga y enciende de nuevo para confirmar la estabilidad;
+5. Para compartirlo: envía el JSON a otra persona, que solo tiene que usar «Importar controlador…».
 
-写坏了不会影响启动：校验不通过的文件只会出现在设置页的错误列表里，
-匹配不上的驱动完全不生效。
+Hacerlo mal no afecta al arranque: los archivos que no pasan la validación solo aparecen en la lista de errores de la página de ajustes,
+y los controladores que no coinciden no tienen ningún efecto.
 
-## 6. 排错
+## 6. Resolución de problemas
 
-- 开机日志（设置 → 诊断 / `%APPDATA%\apkstart\logs\emulator.log`）会写：
-  `drivers: amd-igpu-swangle@1.0.0`，以及每轮实际用的 `-gpu` / `-accel`；
-- 设置页每个驱动都会说明「匹配 / 不匹配 / 已停用」以及命中了哪些条件；
-- 文件加载失败（JSON 语法错、字段写错、超 256KB）会列出具体文件与原因；
-- 想临时排除某个驱动：界面关掉开关即可（写进设置，不删文件）。
+- El registro de arranque (Ajustes → Diagnóstico / `%APPDATA%\apkstart\logs\emulator.log`) indica:
+  `drivers: amd-igpu-swangle@1.0.0`, además del `-gpu` / `-accel` realmente usados en cada ronda;
+- la página de ajustes indica para cada controlador «coincide / no coincide / desactivado» y qué condiciones se cumplieron;
+- si falla la carga de un archivo (error de sintaxis JSON, campo mal escrito, más de 256 KB), se enumeran el archivo concreto y el motivo;
+- para excluir temporalmente un controlador: basta con desactivar el interruptor en la interfaz (se escribe en los ajustes, sin borrar el archivo).
 
-## 7. 内置示例
+## 7. Ejemplos integrados
 
-`src/drivers/` 下三个示例，默认**不启用**：
+Hay tres ejemplos bajo `src/drivers/`, **desactivados** por defecto:
 
-| 文件 | 场景 |
+| Archivo | Escenario |
 |---|---|
-| `example-amd-igpu-swangle.json` | AMD 核显 + 老驱动，`-gpu host` 起来后崩 |
-| `example-no-hypervisor-tcg.json` | 没有硬件加速，直接走软件模拟 |
-| `example-intel-igpu-software.json` | 老 Intel 核显 GLES 初始化失败 |
+| `example-amd-igpu-swangle.json` | iGPU AMD + controlador antiguo; se cae tras arrancar con `-gpu host` |
+| `example-no-hypervisor-tcg.json` | Sin aceleración por hardware; se usa directamente emulación por software |
+| `example-intel-igpu-software.json` | iGPU Intel antigua; falla la inicialización de GLES |
 
-它们同时也是文档：照着改 `match` 就能变成「只对我这台机器生效」的补丁。
+También sirven de documentación: modificar `match` los convierte en un parche «que solo afecta a esta máquina».

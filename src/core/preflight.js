@@ -2,7 +2,7 @@
 /**
  * 本机体检 + 自动配置。
  *
- * 为什么需要它：ApkStart 装完之后能不能跑，取决于四件和软件无关的事 ——
+ * 为什么需要它：ApkBuddyStart 装完之后能不能跑，取决于四件和软件无关的事 ——
  *   1. CPU 虚拟化（VT-x / AMD-V）在 BIOS 里有没有开；
  *   2. Windows 的「虚拟机监控程序平台 / Hyper-V」有没有开（WHPX 靠它）；
  *   3. 显卡能撑到什么程度（厂商、显存、驱动版本，能不能走硬件渲染）；
@@ -396,7 +396,7 @@ function evaluate({ hw = {}, settings = {}, edition = 'installer' } = {}) {
       key: 'os-old',
       level: 'warn',
       title: `La versión de Windows es antigua (build ${build}）`,
-      detail: 'ApkStart admite como mínimo Windows 10 2004 (build 19041). En sistemas más antiguos, el emulator podría cerrarse directamente.',
+      detail: 'ApkBuddyStart admite como mínimo Windows 10 2004 (build 19041). En sistemas más antiguos, el emulator podría cerrarse directamente.',
       action: null,
     });
   }
@@ -423,7 +423,7 @@ function evaluate({ hw = {}, settings = {}, edition = 'installer' } = {}) {
     id: `auto-${vendor}-${build || 'x'}`.toLowerCase().replace(/[^a-z0-9._-]/g, '-'),
     name: `Configuración automática de este equipo (${gpu.name || vendor}）`,
     version: '1.0.0',
-    author: 'Chequeo de ApkStart',
+    author: 'Chequeo de ApkBuddyStart',
     description: `Generado por «Revisión del sistema · Configuración automática»:${gpuRec.why}。${v.accelOk ? 'Aceleración de hardware disponible.' : 'Actualmente no hay aceleración de hardware.'}`,
     priority: 5,
     match: {

@@ -1,62 +1,62 @@
-# ApkStart v0.4.3
+# ApkBuddyStart v0.4.3
 
-> 一句话：把**旋转/全屏**从"改运行时分辨率"彻底改成"换物理面板尺寸"，横屏终于**正立且铺满**；同时修掉整机卡顿，并新增**游戏 / 低延迟模式**（为 FPS 准备）。
+> En una frase: se cambia **rotación / pantalla completa** de «modificar la resolución del runtime» a «cambiar el tamaño físico del panel», y por fin la horizontal queda **derecha y a pantalla completa**; además se corrige la lentitud general del equipo y se añade el **modo juego / baja latencia** (preparando el terreno para FPS).
 
-## 一、旋转 / 全屏：现在真的正立且铺满
+## 1. Rotación / pantalla completa: ahora sí queda derecha y llena la pantalla
 
-### 之前为什么一直不对
+### Por qué antes nunca funcionaba bien
 
-模拟器的画面来自一块「物理 LCD 面板」，Qt 会按面板尺寸开窗口、把画面贴在左上角。之前三种做法都是错路，而每一条都对应你截图里的一个现象：
+La imagen del emulador viene de un «panel LCD físico»: Qt abre la ventana según el tamaño del panel y pega la imagen en la esquina superior izquierda. Los tres enfoques anteriores eran caminos equivocados, y cada uno correspondía a un fenómeno que se veía en tus capturas:
 
-| 做法 | 结果 |
+| Enfoque | Resultado |
 |---|---|
-| 运行期改 `wm size` | 只改 Android 逻辑分辨率，物理面板仍是竖的 → 画面**躺倒 90°**、只占左上角一条、点击坐标错位 |
-| 运行期改 `wm density` | framebuffer 尺寸不变 → 画面**不会铺满**，最大化后右侧一大片空白 |
-| `adb emu rotate` | 只转画面内容，系统里还是竖屏 |
+| Cambiar `wm size` en tiempo de ejecución | Solo cambia la resolución lógica de Android; el panel físico sigue en vertical → imagen **tumbada 90°**, que solo ocupa una franja en la esquina superior izquierda y con coordenadas de clic desplazadas |
+| Cambiar `wm density` en tiempo de ejecución | El tamaño del framebuffer no cambia → la imagen **no llena**, y queda una gran zona en blanco a la derecha al maximizar |
+| `adb emu rotate` | Solo gira el contenido de la imagen; el sistema sigue en vertical |
 
-### 现在怎么做
+### Cómo se hace ahora
 
-**旋转 = 改 `hw.lcd.width/height` 并重启模拟器**（约 30–60 秒，只在点旋转时发生一次）：
+**Rotar = cambiar `hw.lcd.width/height` y reiniciar el emulador** (unos 30–60 s, y solo ocurre una vez al pulsar rotar):
 
-- 竖屏面板 `720x1280`，横屏面板 `1280x720`；
-- 同时按方向锁 `wm user-rotation`（横屏锁 1、竖屏锁 0）+ 关闭传感器自动旋转 —— 面板变横但 rotation 仍是 0 时，画面就会躺倒；
-- 方向持久化在设置里，重开 ApkStart 仍按这个方向开机；
-- **全屏按钮 = 切横屏**：窗口最大化 + 物理面板转横，不再是把竖画面拉大。
+- Panel vertical `720x1280`, panel horizontal `1280x720`;
+- Al mismo tiempo se fija el bloqueo de orientación con `wm user-rotation` (horizontal bloquea 1, vertical bloquea 0) y se desactiva la rotación automática por sensor: si el panel pasa a horizontal pero la rotación sigue siendo 0, la imagen se tumba;
+- La orientación se guarda en los ajustes y al volver a abrir ApkBuddyStart se arranca con esa orientación;
+- **El botón de pantalla completa = pasar a horizontal**: se maximiza la ventana y se gira el panel físico, en lugar de estirar la imagen vertical.
 
-### 顺带修掉的两个真 bug
+### Dos bugs reales que se corrigen de paso
 
-1. **`-no-skin` 覆盖 `-skin`**：启动参数同时带了这两个，`-no-skin` 让面板尺寸退回 `config.ini` 旧值 —— 这就是"设置里切了横屏、实际还是竖屏"的直接原因。已移除 `-no-skin`。
-2. **最大化后不铺满**：Electron 最大化时宿主窗口变成 1936×1048，但内部的 Chrome 渲染层仍停在旧尺寸（实测 532×984），而模拟器窗口挂在渲染层之下、会被父窗口裁剪。现在 Fit 会**先把渲染层拉满宿主客户区**，再按该尺寸贴模拟器；窗口扫描每轮也会自愈一次，即使 JS 的 resize 事件丢了也能恢复。
+1. **`-no-skin` anulaba `-skin`**: los parámetros de arranque llevaban ambos a la vez, y `-no-skin` hacía que el tamaño del panel volviera al valor antiguo de `config.ini`. Esa es la causa directa de «cambié a horizontal en los ajustes pero sigue en vertical». Se eliminó `-no-skin`.
+2. **Al maximizar no llenaba**: al maximizar Electron, la ventana del anfitrión pasa a 1936×1048, pero la capa de renderizado de Chrome interna se queda en el tamaño antiguo (medido: 532×984), y la ventana del emulador cuelga de esa capa y queda recortada por la ventana padre. Ahora `Fit` **estira primero la capa de renderizado a todo el área de cliente del anfitrión** y luego pega el emulador con ese tamaño; el escaneo de ventanas también se autosana una vez por ronda, para recuperarse incluso si se pierde el evento de redimensionado de JS.
 
-## 二、卡顿：整机变卡的三处开销
+## 2. Lentitud: tres focos de sobrecarga que ralentizaban todo el equipo
 
-1. **窗口扫描频率**：原来开机前 90 秒每 120ms 就全桌面枚举一次窗口（一轮里 4 次 `EnumWindows` + 进程路径查询），持续吃 CPU。现在改为前 10 秒 250ms、之后 **1500ms**；游戏模式进一步降到 **3000ms**。
-2. **模拟器优先级**：默认 balanced 会把 qemu 摁到 BelowNormal，关掉应用后甚至降到 **Idle**（最低）—— Android 因此严重掉帧。现在关闭应用后不再无条件降到 Idle。
-3. **全局鼠标钩子**：`WH_MOUSE_LL` 会对桌面每个鼠标事件同步回调，明显增加指针延迟。**游戏模式下完全不装**。
+1. **Frecuencia del escaneo de ventanas**: antes, durante los primeros 90 s de arranque, se enumeraban todas las ventanas del escritorio cada 120 ms (4 llamadas a `EnumWindows` + consulta de rutas de proceso por ronda), consumiendo CPU sin parar. Ahora es 250 ms durante los primeros 10 s y **1500 ms** después; el modo juego lo reduce aún más a **3000 ms**.
+2. **Prioridad del emulador**: el valor predeterminado, balanced, baja qemu a BelowNormal, e incluso a **Idle** (lo más bajo) al cerrar la aplicación, lo que provocaba pérdidas de fotogramas graves en Android. Ahora, al cerrar la aplicación, ya no se baja a Idle sin condiciones.
+3. **Gancho global del ratón**: `WH_MOUSE_LL` callback de forma síncrona cada evento de ratón del escritorio, aumentando notablemente la latencia del puntero. **En modo juego no se instala en absoluto.**
 
-## 三、新增：游戏 / 低延迟模式
+## 3. Novedad: modo juego / baja latencia
 
-设置 → 性能与资源 → **虚拟机优先级 → 「游戏 / 低延迟」**：
+Ajustes → Rendimiento y recursos → **Prioridad de la máquina virtual → «Juego / baja latencia»**:
 
-- 模拟器进程提到 **High** 优先级，安卓渲染和输入优先拿到 CPU；
-- 关闭全局鼠标钩子，指针走原生输入路径；
-- 窗口扫描降到 3000ms，减少宿主侧打扰；
-- 「流畅」资源策略现在也直接进这个模式（视频/游戏优先）。
+- Sube el proceso del emulador a prioridad **High**, para que el renderizado y la entrada de Android tengan prioridad de CPU;
+- Desactiva el gancho global del ratón, de modo que el puntero use la ruta de entrada nativa;
+- Reduce el escaneo de ventanas a 3000 ms, para molestar menos desde el anfitrión;
+- La estrategia de recursos «fluida» ahora también entra directamente en este modo (prioridad para vídeo / juegos).
 
-代价是整机其他程序会慢一些，所以默认仍是「均衡」。
+El coste es que los demás programas del equipo van algo más lentos, por lo que el valor predeterminado sigue siendo «equilibrado».
 
-## 四、顺带加固
+## 4. Refuerzos varios
 
-- `settings.json` 现在能容忍 **UTF-8 BOM**。之前文件一旦带 BOM，`JSON.parse` 直接抛错，整个配置静默回落到默认值 —— 用户会看到"设置全丢了"却查不出原因（我自己测试时就踩到了）。
-- 新增回归测试：横屏必须靠 `lcdFor({landscape})`、不得再用运行期 `wm size`；窗口模式必须用 `-skin` 且不得带 `-no-skin`；游戏模式必须是 High 且不装全局钩子。
+- `settings.json` ahora tolera **BOM UTF-8**. Antes, en cuanto el archivo llevaba BOM, `JSON.parse` lanzaba un error y toda la configuración volvía silenciosamente a los valores por defecto: el usuario veía «se perdieron todos mis ajustes» sin poder averiguar por qué (me pasó en mis propias pruebas).
+- Nuevas pruebas de regresión: la horizontal debe usar `lcdFor({landscape})` y no volver a `wm size` en tiempo de ejecución; el modo ventana debe usar `-skin` y no llevar `-no-skin`; el modo juego debe ser High y no instalar el gancho global.
 
-## 五、实测
+## 5. Pruebas reales
 
-- `npm test`：**117 项全部通过**（8 + 25 + 84）。
-- 横屏实测：`wm size` = `Physical size: 1280x720`、`user_rotation=1`，guest 画面**正立、布局正确、无黑边**；最大化后宿主客户区 1920×1032、渲染层同步拉满。
-- 竖屏实测：`720x1280`、`rotation=0`，画面正立铺满。
+- `npm test`: **117 pruebas, todas superadas** (8 + 25 + 84).
+- Horizontal medido: `wm size` = `Physical size: 1280x720`, `user_rotation=1`; la imagen del invitado está **derecha, con la maquetación correcta y sin bordes negros**; al maximizar, el área de cliente del anfitrión es 1920×1032 y la capa de renderizado se estira a juego.
+- Vertical medido: `720x1280`, `rotation=0`, imagen derecha y a pantalla completa.
 
-## 六、升级方式
+## 6. Cómo actualizar
 
-- 便携版：解压覆盖，数据目录（默认 `%APPDATA%\apkstart`）保持不变。
-- 安装版：直接安装覆盖。
+- Versión portable: descomprime y sobrescribe; el directorio de datos (por defecto `%APPDATA%\apkstart`) se mantiene igual.
+- Versión instalada: instala directamente para sobrescribir.

@@ -1,72 +1,72 @@
-# Microsoft Store 提交材料（ApkStart 0.5.8）
+# Materiales de envío a Microsoft Store (ApkBuddyStart 0.5.8)
 
-> 这份文件是给 Partner Center 表单直接复制用的。包体、图标、清单由脚本产出，
-> 只有「注册账号 → 预留名称 → 上传 → 送审」必须在网页上人工完成。
+> Este archivo está preparado para copiar directamente en los formularios de Partner Center. El paquete, los iconos y el manifiesto los generan los scripts;
+> solo «crear la cuenta → reservar el nombre → subir → enviar a certificación» debe hacerse manualmente en la web.
 
 ---
 
-## 1. 基本信息
+## 1. Información básica
 
-| 字段 | 值 |
+| Campo | Valor |
 |---|---|
-| Product name | `ApkStart` |
-| Category | Developer tools → Utilities & tools（备选：Productivity） |
+| Product name | `ApkBuddyStart` |
+| Category | Developer tools → Utilities & tools (alternativa: Productivity) |
 | Price | Free |
-| Package | `dist/store/ApkStart_0.5.8.0_x64.msix`（x64，约 850 MB） |
-| 支持语言 | 简体中文 / English (United States) |
-| 官网 | https://github.com/RoutineMiku/apkstart |
-| 支持邮箱 | <!-- 填你的邮箱 --> |
-| 隐私政策 | https://github.com/RoutineMiku/apkstart/blob/main/docs/privacy.md（或自建页面） |
+| Package | `dist/store/ApkBuddyStart_0.5.8.0_x64.msix` (x64, unos 850 MB) |
+| Idiomas admitidos | Español / English (United States) |
+| Sitio web | https://github.com/RoutineMiku/apkstart |
+| Correo de soporte | <!-- escribe tu correo --> |
+| Política de privacidad | https://github.com/RoutineMiku/apkstart/blob/main/docs/privacy.md (o una página propia) |
 
-### 本版新增（Partner Center → **What's new in this version**，直接粘贴）
+### Novedades de esta versión (Partner Center → **What's new in this version**, pegar directamente)
 
-**中文**
+**Español**
 ```
-0.5.8：
-· 新增「本机体检 · 自动配置」：自动检查 CPU 虚拟化是否开启、Windows 虚拟机监控程序平台是否启用、显卡与显存、内存和系统版本。
-· 能自动改的直接生效：按本机硬件推荐内存、CPU 核心数、画质与渲染后端，并把这台机器的配置固化成一份驱动。
-· 需要管理员权限的操作（开启 Windows 功能、安装加速驱动）提供一键按钮；只能进 BIOS 改的会给出明确步骤。
+0.5.8:
+· Nueva «comprobación local · configuración automática»: comprueba automáticamente si la virtualización de CPU está activada, si la plataforma de hipervisor de Windows está habilitada, la GPU y la VRAM, la memoria y la versión del sistema.
+· Lo que se puede cambiar automáticamente se aplica: recomienda memoria, número de núcleos de CPU, calidad y backend de renderizado según el hardware local, y fija la configuración de esta máquina en un controlador.
+· Las operaciones que requieren permisos de administrador (activar funciones de Windows, instalar el controlador de aceleración) ofrecen un botón de un clic; lo que solo se puede cambiar en la BIOS incluye pasos claros.
 
-0.5.7（已包含）：
-· 新增「驱动（兼容补丁）」：机器跑不起来时，可以导入或自己写一份 JSON 补丁，声明匹配哪些机器、命中后改哪些启动参数。
-· 设置页可直接导入驱动、启用停用、打开驱动目录、导出本机模板；补丁只改白名单里的启动参数，不执行任何代码。
-· 内置三个示例驱动（AMD 核显、无硬件加速、老 Intel 核显），默认不启用，按需打开即可。
+0.5.7 (incluido):
+· Nuevos «controladores (parches de compatibilidad)»: cuando una máquina no puede iniciar, se puede importar o escribir un parche JSON que declare a qué máquinas afecta y qué parámetros de arranque cambia.
+· La página de ajustes permite importar controladores, activarlos/desactivarlos, abrir el directorio de controladores y exportar la plantilla de esta máquina; los parches solo modifican parámetros de arranque de la lista blanca y no ejecutan ningún código.
+· Se incluyen tres ejemplos (iGPU AMD, sin aceleración por hardware, iGPU Intel antigua), desactivados por defecto y listos para activarse cuando haga falta.
 
-0.5.6（已包含）：
-· 运行时只保留 ApkStart 自带的一套：不再探测、接管或依赖电脑上安装的任何模拟器（MuMu、雷电、蓝叠、WSA 都不再使用）。
-· 设置里移除了「引擎模式」和第三方模拟器相关选项，不会再因为导入旧配置而切到别人的模拟器。
-· 内存、CPU 核心数与数据分区仍可自行分配，上限按你的电脑配置计算。
+0.5.6 (incluido):
+· Solo se conserva la ejecución propia de ApkBuddyStart: ya no se detecta, se toma el control ni se depende de ningún emulador instalado en el ordenador (MuMu, LDPlayer, BlueStacks y WSA ya no se usan).
+· Se han eliminado de los ajustes el «modo de motor» y todas las opciones de emuladores de terceros, de modo que importar una configuración antigua ya no puede cambiar al emulador de otro.
+· La memoria, los núcleos de CPU y la partición de datos siguen siendo asignables por el usuario, con límites calculados según tu equipo.
 
-0.5.5（已包含）：
-· 修复部分电脑上应用画面全黑的问题：自动识别显卡能力并切换渲染档位，画面异常时自动重启重试。
-· 支持安装 50GB 级的大型安卓游戏：安装前按实际需求检查磁盘空间，不再装到一半才失败。
-· 内存、CPU 核心数与数据分区大小现在可以自己分配，上限跟着你的电脑配置走。
-· 数据分区扩容不再「显示成功但实际没扩」：需要重建时会明确告知并二次确认。
-· 安装包独立运行，自带运行时，不需要预先安装任何模拟器。
+0.5.5 (incluido):
+· Se corrige el problema de pantalla completamente negra en algunos equipos: se detecta la capacidad de la GPU y se cambia el nivel de renderizado, con un reintento automático si la imagen sale mal.
+· Se admite la instalación de juegos Android grandes del orden de los 50 GB: el espacio en disco se comprueba antes de instalar, en lugar de fallar a mitad de camino.
+· La memoria, los núcleos de CPU y el tamaño de la partición de datos ahora los puede asignar el usuario, con límites que siguen la configuración de tu equipo.
+· Ampliar la partición de datos ya no «informa de éxito pero no hace nada»: cuando hace falta reconstruirla, se indica claramente y se pide confirmación.
+· El paquete se ejecuta de forma autónoma con su propia ejecución integrada; no hace falta instalar previamente ningún emulador.
 
-0.5.4（已包含）：
-· 修复在 125% / 150% 等非 100% 缩放的屏幕上，独立窗口只显示一部分并偏离角落、点击错位的问题。
-· 修复冷启动时被「允许 USB 调试」授权框卡住、误报显卡/虚拟化问题导致开机超时。
-· 修复 PackageManager 报告「已安装」但应用文件已丢失、导致应用打不开的问题。
-· 修复便携版更新后不重启、反复重新下载的死循环；一键卸载现已正确识别安装版。
-· 加强 APK 包名与压缩包解压校验，拒绝恶意路径写入与命令注入。
+0.5.4 (incluido):
+· Se corrige que, en pantallas con escalado distinto del 100 % (125 % / 150 %), las ventanas independientes solo se vieran parcialmente, quedaran desplazadas hacia una esquina y los clics fueran incorrectos.
+· Se corrige que el arranque en frío se quedara bloqueado en el diálogo «Permitir depuración USB» y que se informara erróneamente de problemas de GPU/virtualización, provocando un tiempo de espera agotado.
+· Se corrige que las apps que PackageManager daba por «instaladas» pero cuyos archivos faltaban no se pudieran abrir.
+· Se corrige el bucle en que la versión portátil se actualizaba pero no reiniciaba y volvía a descargar una y otra vez; la desinstalación con un clic ahora reconoce correctamente las versiones instaladas.
+· Se refuerzan la validación del nombre de paquete APK y de la extracción de archivos comprimidos para rechazar rutas maliciosas y ataques de inyección de comandos.
 
-0.5.3（已包含）：
-· 安卓应用的桌面 / 开始菜单快捷方式恢复使用**该应用自己的图标**，不再显示 ApkStart 的品牌图标。
-· 把应用固定到任务栏时，任务栏按钮与固定项使用同一个应用图标（每个应用独立身份）。
-· 运行器自己的 exe 写入了品牌图标与版本信息，资源管理器里不再显示 Electron 的默认图标和 33.x 版本号。
+0.5.3 (incluido):
+· Los accesos directos de las apps Android en el escritorio y el menú Inicio vuelven a usar **el icono propio de cada app**, en lugar del icono de marca de ApkBuddyStart.
+· Al fijar una app a la barra de tareas, el botón y el elemento fijado usan el mismo icono de aplicación (cada app tiene su propia identidad).
+· El exe del propio ejecutor lleva ahora el icono de la marca y la información de versión; el Explorador de archivos ya no muestra el icono predeterminado de Electron ni el número de versión 33.x.
 
-0.5.2（已包含）：
-· 装好后如果系统没开「Windows 虚拟机监控程序平台」，现在会直接打开该设置对话框并告诉你要勾哪一项。
-· 提示文案不再建议安装 AEHD 驱动（商店版不能装内核驱动）。
-· 以软件模拟运行时，第一次打开应用会弹一次系统通知，说明开启硬件加速可快 5~10 倍。
+0.5.2 (incluido):
+· Si tras instalar no está activada la función «Windows Hypervisor Platform», ahora se abre directamente ese cuadro de ajustes y se indica qué casilla hay que marcar.
+· Los textos informativos ya no recomiendan instalar el controlador AEHD (una app de tienda no puede instalar controladores de kernel).
+· Al ejecutar en modo de emulación por software, el primer inicio de una app muestra una notificación del sistema que explica que la aceleración por hardware puede ser de 5 a 10 veces más rápida.
 
-0.5.1（已包含）：
-· 切换到另一个屏幕方向的应用时，等待换向的约 40 秒内会显示「正在切换…」窗口，不再是一片空白桌面。
-· 冷启动时不再误报「虚拟机没有网络」并建议重置安卓数据。
-· 修复了换向重启后偶发「应用启动失败」的问题。
-· 点击另一个应用时，若上一个应用仍在启动，新的启动会排队等待，不再互相打断。
-· 开机瞬间一闪而过的控制台黑框已消除；应用窗口不再短暂显示上一个应用的名字。
+0.5.1 (incluido):
+· Al cambiar a una app con otra orientación de pantalla, durante los unos 40 segundos que dura el cambio se muestra una ventana «Cambiando orientación…», en lugar de un escritorio en blanco.
+· En el arranque en frío ya no se informa falsamente de que «la máquina virtual no tiene red» ni se sugiere restablecer los datos de Android.
+· Se corrige un fallo ocasional de «la app no se pudo iniciar» tras reiniciar por un cambio de orientación.
+· Al abrir otra app mientras la anterior todavía está arrancando, el nuevo arranque se pone en cola en lugar de interrumpirla.
+· Se ha eliminado el destello de la ventana negra de consola en el arranque; la ventana de la app ya no muestra brevemente el nombre de la app anterior.
 ```
 
 **English**
@@ -82,7 +82,7 @@
 · Three built-in examples (AMD iGPU, no hardware acceleration, old Intel iGPU) are shipped disabled by default.
 
 0.5.6 (included):
-· Only ApkStart's own runtime remains: emulators installed on the PC (MuMu, LDPlayer, BlueStacks, WSA) are no longer detected, taken over, or relied on.
+· Only ApkBuddyStart's own runtime remains: emulators installed on the PC (MuMu, LDPlayer, BlueStacks, WSA) are no longer detected, taken over, or relied on.
 · The engine selector and all third-party emulator options were removed from Settings, so an imported old config can no longer switch to someone else's emulator.
 · Memory, CPU cores and the /data partition are still user-allocatable, with limits derived from your PC.
 
@@ -102,7 +102,7 @@
 
 0.5.3 (included):
 · Desktop and Start menu shortcuts for Android apps now use each app's own icon again,
-  instead of ApkStart's brand icon.
+  instead of ApkBuddyStart's brand icon.
 · Pinning an app to the taskbar keeps the same app icon on both the pinned shortcut and
   the running window (each app has its own app identity).
 · The runner's own exe now carries the product icon and version info, so Explorer no
@@ -125,11 +125,11 @@
 
 ---
 
-## 2. 短描述（≤100 字符）
+## 2. Descripción corta (≤100 caracteres)
 
-**中文**
+**Español**
 ```
-双击 APK 即可在 Windows 上运行安卓应用：独立窗口、桌面图标、运行时内置，装完即用。
+Ejecuta apps de Android en Windows con doble clic en un APK: ventanas independientes, iconos en el escritorio y ejecución integrada, listo nada más instalar.
 ```
 
 **English**
@@ -139,65 +139,53 @@ Run Android apps on Windows by double-clicking an APK. Each app gets its own win
 
 ---
 
-## 3. 详细描述（≤10,000 字符）
+## 3. Descripción detallada (≤10.000 caracteres)
 
-**中文**
-
-```
-ApkStart 把安卓应用变成 Windows 上"能被安装和打开"的普通软件。
-
-不用先开模拟器、不用配置 ADB、不用找镜像。装好 ApkStart 之后，你在资源管理器里
-双击一个 .apk 文件，它就会自动解析、安装，并在桌面和开始菜单各放一个带真实应用
-图标的快捷方式——之后双击那个图标，就是直接启动这个安卓应用。
-
-■ 应用就是一个窗口
-每个安卓应用运行在独立窗口里：竖屏应用保持手机比例并铺满屏幕高度，横屏应用按
-16:9 铺满；窗口模式可以自由拖动缩放，每个应用的尺寸单独记住。按 F11 随时切换
-全屏 / 窗口。
-
-■ 像原生软件一样被找到
-安装 APK 后会自动创建桌面与开始菜单快捷方式，Windows 搜索里直接输应用名就能
-打开，任务栏也按应用分组。
-
-■ 文件互通
-%USERPROFILE%\ApkStartShared 与安卓内的 /sdcard/ApkStartShared 双向同步。
-安卓应用存下来的文件，Windows 这边直接就能看到。
-
-■ 一次下载，装完即用
-安装包内置完整的 Android 运行时（模拟器、platform-tools、系统镜像），
-运行时不下载任何可执行内容。
-
-■ 轻量
-壳层零第三方依赖；运行时按需拉起、空闲自动回收。也可以复用你机器上已有的
-Android 运行时，额外占用为零。
-
-■ 网络直接用主机的
-安卓侧走 QEMU 用户态 NAT，出口复用主机物理网卡，不会创建任何虚拟网卡或
-虚拟交换机，不需要装驱动。
-
-──────────── 系统要求 ────────────
-· Windows 10 版本 2004（build 19041）或更高，x64
-· 需要启用"虚拟机平台"（Windows 功能里的 Windows Hypervisor Platform / WHPX），
-  这是微软商店版唯一支持的硬件加速方式（商店应用不允许安装内核驱动）
-· 建议 8 GB 以上内存；系统盘预留约 4 GB 用于展开系统镜像
-
-──────────── 首次启动 ────────────
-第一次打开会把安装包内的系统镜像展开到 %USERPROFILE%\ApkStart\data
-（约 3.3 GB，通常 1 分钟内完成）。之后启动不需要联网。
-
-──────────── 说明 ────────────
-· 商店版由 Microsoft Store 负责更新，应用内不提供自更新。
-· 卸载应用不会自动删除 %USERPROFILE%\ApkStart\data 里的数据；需要彻底清理时
-  请手动删除该目录。
-· 本应用不收集个人数据，不含广告，不含内购。
-```
-
-**English**（可选，若只提交中文可留空）
+**Español**
 
 ```
-ApkStart turns Android apps into regular Windows software you can install and open.
+ApkBuddyStart convierte las aplicaciones Android en software corriente de Windows, que se puede instalar y abrir.
 
-After installing ApkStart, double-click any .apk in File Explorer. It is parsed and
+No hace falta abrir primero un emulador, configurar ADB ni buscar una imagen. Tras instalar ApkBuddyStart, haz doble clic en un archivo .apk en el Explorador de archivos: se analiza, se instala automáticamente y coloca un acceso directo con el icono real de la app tanto en el escritorio como en el menú Inicio. A partir de entonces, hacer doble clic en ese icono inicia directamente la aplicación Android.
+
+■ La aplicación es una ventana
+Cada aplicación Android se ejecuta en su propia ventana: las apps en vertical mantienen la proporción del teléfono y llenan toda la altura de la pantalla; las de horizontal llenan una proporción 16:9. El modo ventana se puede mover y redimensionar libremente, y cada app recuerda su propio tamaño. Pulsa F11 para alternar en cualquier momento entre pantalla completa y ventana.
+
+■ Se encuentra como un programa nativo
+Al instalar un APK se crean automáticamente los accesos directos del escritorio y del menú Inicio; basta con escribir el nombre de la app en la búsqueda de Windows para abrirla, y la barra de tareas agrupa por aplicación.
+
+■ Archivos compartidos
+%USERPROFILE%\ApkBuddyStartShared se sincroniza en ambos sentidos con /sdcard/ApkBuddyStartShared dentro de Android. Los archivos guardados por las apps Android se pueden ver directamente desde Windows.
+
+■ Una descarga, listo al instalar
+El paquete incluye el entorno de ejecución de Android completo (emulador, platform-tools e imagen de sistema); en tiempo de ejecución no se descarga ningún contenido ejecutable.
+
+■ Ligero
+La carcasa no tiene dependencias de terceros; el ejecución se inicia bajo demanda y se libera cuando está inactivo. También puedes reutilizar el entorno de ejecución de Android que ya tengas en tu máquina, con un consumo adicional cero.
+
+■ La red es la del host
+El lado Android usa el NAT en modo usuario de QEMU y comparte la salida con la tarjeta de red física del host; no se crea ninguna tarjeta ni conmutador virtual y no hay que instalar ningún controlador.
+
+──────────── Requisitos del sistema ────────────
+· Windows 10 versión 2004 (build 19041) o superior, x64
+· Es necesario activar «Plataforma de máquina virtual» (Windows Hypervisor Platform / WHPX en las funciones de Windows); es el único método de aceleración por hardware admitido por la versión de Microsoft Store (una app de tienda no puede instalar controladores de kernel)
+· Se recomiendan 8 GB de memoria o más; reserva unos 4 GB en la unidad del sistema para desplegar la imagen
+
+──────────── Primer inicio ────────────
+La primera vez se despliega la imagen del sistema incluida en el paquete en %USERPROFILE%\ApkBuddyStart\data (unos 3,3 GB; normalmente se tarda menos de un minuto). Los inicios posteriores no requieren conexión a red.
+
+──────────── Notas ────────────
+· La versión de tienda la actualiza Microsoft Store; la aplicación no ofrece actualización interna.
+· Desinstalar la aplicación no elimina automáticamente los datos de %USERPROFILE%\ApkBuddyStart\data; para una limpieza completa, borra ese directorio manualmente.
+· Esta aplicación no recopila datos personales, no contiene publicidad ni compras integradas.
+```
+
+**English** (opcional; se puede dejar vacío si solo se envía en español)
+
+```
+ApkBuddyStart turns Android apps into regular Windows software you can install and open.
+
+After installing ApkBuddyStart, double-click any .apk in File Explorer. It is parsed and
 installed automatically, and a shortcut with the app's real icon appears on your
 Desktop and in the Start menu. Double-clicking that shortcut launches the Android
 app directly.
@@ -207,8 +195,8 @@ app directly.
   remembers each app's size. F11 toggles full screen.
 · Discoverable like native software — Desktop and Start menu shortcuts are created
   on install, so Windows Search finds apps by name.
-· Shared files — %USERPROFILE%\ApkStartShared syncs both ways with
-  /sdcard/ApkStartShared inside Android.
+· Shared files — %USERPROFILE%\ApkBuddyStartShared syncs both ways with
+  /sdcard/ApkBuddyStartShared inside Android.
 · One download, ready to use — the Android runtime (emulator, platform-tools,
   system image) ships inside the package. Nothing executable is downloaded at runtime.
 · Lightweight — zero third-party dependencies in the shell; the runtime starts on
@@ -220,65 +208,65 @@ Requirements: Windows 10 2004 (build 19041) or later, x64; "Virtual Machine Plat
 (Windows Hypervisor Platform) enabled; 8 GB RAM recommended; ~4 GB free disk for the
 system image.
 
-First launch expands the bundled system image to %USERPROFILE%\ApkStart\data
+First launch expands the bundled system image to %USERPROFILE%\ApkBuddyStart\data
 (~3.3 GB, usually under a minute). No network access is needed afterwards.
 ```
 
 ---
 
-## 4. 功能列表（Features，每条 ≤200 字符，最多 20 条）
+## 4. Lista de funciones (Features, ≤200 caracteres cada una, máximo 20)
 
-1. 双击 .apk 自动安装，无需打开模拟器界面
-2. 每个应用生成独立桌面图标与开始菜单快捷方式
-3. 应用以独立窗口运行，支持全屏 / 窗口模式与尺寸记忆
-4. 自动识别竖屏 / 横屏应用并按正确比例铺满
-5. Windows 搜索可直接搜到已安装的安卓应用
-6. Windows 与安卓共享文件夹双向同步
-7. 内置完整运行时，安装后不再下载任何可执行内容
-8. 运行时按需启动、空闲回收，壳层零第三方依赖
-9. 不创建虚拟网卡、不安装内核驱动，网络直接复用主机
-10. 自动授予运行时权限，闪退自动重试
+1. Instalación automática de .apk con doble clic, sin abrir la interfaz del emulador
+2. Cada aplicación genera su propio icono de escritorio y acceso directo en el menú Inicio
+3. Las apps se ejecutan en ventanas independientes, con modos pantalla completa/ventana y memoria de tamaño
+4. Detecta automáticamente apps verticales/horizontales y las adapta con la proporción correcta
+5. Las apps Android instaladas se encuentran directamente con la búsqueda de Windows
+6. Carpeta compartida entre Windows y Android con sincronización bidireccional
+7. Ejecución completa integrada; tras la instalación no se descarga ningún contenido ejecutable
+8. La ejecución se inicia bajo demanda y se libera cuando está inactiva; carcasa sin dependencias de terceros
+9. No crea tarjetas de red virtuales ni instala controladores de kernel; la red reutiliza directamente el host
+10. Concede automáticamente permisos de ejecución y reintenta cuando una app se cierra de forma inesperada
 
 ---
 
-## 5. 截图（至少 1 张，建议 4 张）
+## 5. Capturas de pantalla (al menos 1, se recomiendan 4)
 
-要求：PNG，**1366×768 或更大**，单张 ≤50 MB，最多 10 张。
+Requisitos: PNG, **1366×768 o superior**, ≤50 MB por imagen, máximo 10.
 
-建议顺序：
+Orden sugerido:
 
-1. 主界面（已装应用卡片）
-2. 竖屏应用正在运行（体现独立窗口与铺满）
+1. Interfaz principal (tarjetas de aplicaciones instaladas)
+2. Una aplicación vertical en funcionamiento (para mostrar la ventana independiente y el llenado de pantalla)
 
-**已生成，可直接上传**（1920×1080，满足 1366×768 下限）：
+**Generadas, listas para subir** (1920×1080, cumplen el mínimo de 1366×768):
 
-| 文件 | 主题 |
+| Archivo | Tema |
 |---|---|
-| `docs/store-shots/1-main.png` | 双击 APK，即刻运行 |
-| `docs/store-shots/2-window.png` | 每个应用都是独立窗口 |
+| `docs/store-shots/1-main.png` | Doble clic en un APK y se ejecuta al instante |
+| `docs/store-shots/2-window.png` | Cada aplicación es una ventana independiente |
 
-重新生成：
+Para regenerarlas:
 
 ```powershell
 npx electron build/store-shots.js
 ```
 
-脚本只做「真实界面 + 背景 + 文案」的构图，不修改界面本身。
-原始截图 `raw-*.png` 由应用的 `--smoke` 截图模式产出（1920×1032）。
+El script solo compone «interfaz real + fondo + texto»; no modifica la interfaz en sí.
+Las capturas originales `raw-*.png` las produce el modo de captura `--smoke` de la aplicación (1920×1032).
 
 ---
 
-## 6. Notes for certification（给审核员，必填）
+## 6. Notes for certification (para el revisor, obligatorio)
 
 ```
-ApkStart is an Android app runner for Windows. It bundles Google's official Android
+ApkBuddyStart is an Android app runner for Windows. It bundles Google's official Android
 emulator (qemu-system-x86_64.exe) and an AOSP system image inside the MSIX package.
 No executable content is downloaded at runtime.
 
 How to test:
-1. Install the package and launch ApkStart.
+1. Install the package and launch ApkBuddyStart.
 2. On first launch it expands the bundled system image to
-   %USERPROFILE%\ApkStart\data (~3.3 GB, about one minute). This is local extraction,
+   %USERPROFILE%\ApkBuddyStart\data (~3.3 GB, about one minute). This is local extraction,
    not a download.
 3. Drag any .apk onto the window (or double-click an .apk after enabling the file
    association in Settings) to install it. A shortcut appears on the Desktop.
@@ -296,39 +284,35 @@ Notes:
   because MSIX apps cannot elevate. To enable it: Win+R → `optionalfeatures` → tick
   "Windows Hypervisor Platform" → OK → reboot. Everything still works without it
   (software emulation), just much slower. This is a Windows setting, not an app defect.
-· Full-trust desktop app (runFullTrust). Data is stored under %USERPROFILE%\ApkStart,
+· Full-trust desktop app (runFullTrust). Data is stored under %USERPROFILE%\ApkBuddyStart,
   outside AppData, to avoid MSIX write virtualization breaking child processes.
 · No telemetry, no ads, no in-app purchases, no account required.
 ```
 
 ---
 
-## 7. 年龄分级（IARC 问卷）
+## 7. Clasificación por edades (cuestionario IARC)
 
-- 应用本身不含内容，但可运行第三方安卓应用 → 选择「用户可访问第三方内容」
-- 不含用户生成内容分享、不含社交功能、不含位置共享
-- 结果通常为 3+ / Everyone
+- La aplicación en sí no contiene contenido, pero puede ejecutar apps Android de terceros → selecciona «el usuario puede acceder a contenido de terceros»
+- No contiene contenido generado por usuarios, ni funciones sociales, ni uso compartido de ubicación
+- El resultado suele ser 3+ / Everyone
 
 ---
 
-## 8. 上传步骤（人工，约 15 分钟）
+## 8. Pasos de subida (manual, unos 15 minutos)
 
-1. 打开 <https://partner.microsoft.com/dashboard>，进入 **Apps and games → New product → MSIX or PWA app**。
-2. 预留名称 `ApkStart`，进入 **Product management → Product identity**，
-   复制 `Package/Identity/Name` 与 `Package/Identity/Publisher`。
-3. 身份值**已经是确认值**（`RoutineMiku.ApkStart` / `CN=58CA1DED-…`），
-   直接 `node build/msix.js` 打出来的就是对的；`build/msix.js` 有守卫，
-   Publisher 里没有 `58CA1DED` 会直接退出（退出码 3），不会再产出废包。
-   仅当 Partner Center 显示的值与此不同才需要覆盖：
+1. Abre <https://partner.microsoft.com/dashboard> y entra en **Apps and games → New product → MSIX or PWA app**.
+2. Reserva el nombre `ApkBuddyStart`, entra en **Product management → Product identity** y copia `Package/Identity/Name` y `Package/Identity/Publisher`.
+3. Los valores de identidad **ya están confirmados** (`RoutineMiku.ApkBuddyStart` / `CN=58CA1DED-…`); `node build/msix.js` genera directamente el paquete correcto. `build/msix.js` tiene una guarda: si Publisher no contiene `58CA1DED`, sale (código de salida 3) y no produce un paquete inútil. Solo hay que sobrescribirlos si Partner Center muestra valores distintos:
    ```powershell
    node build/msix.js --identity "<Identity/Name>" --publisher "<Identity/Publisher>"
    ```
-4. **Packages** → 上传 `dist/store/ApkStart_0.5.8.0_x64.msix`，等待校验通过。
-5. **Store listing** → 填第 2–5 节的内容、上传截图、选分类。
-6. **Pricing and availability** → Free，市场选中国 + 全球。
-7. **Submission options** → 粘贴第 6 节的 certification notes。
-8. **Age ratings** → 完成 IARC 问卷。
-9. 提交审核。首个包通常 1–3 个工作日。
+4. **Packages** → sube `dist/store/ApkBuddyStart_0.5.8.0_x64.msix` y espera a que pase la validación.
+5. **Store listing** → rellena el contenido de las secciones 2–5, sube las capturas y elige la categoría.
+6. **Pricing and availability** → Free; selecciona China + Todo el mundo como mercados.
+7. **Submission options** → pega las notas de certificación de la sección 6.
+8. **Age ratings** → completa el cuestionario IARC.
+9. Envía a certificación. El primer paquete suele tardar de 1 a 3 días hábiles.
 
-> 不要用 Store submission API 创建首个 submission：一旦用 API 建过，
-> 该 submission 就不能再回网页编辑，会进入不可恢复的 error 状态。
+> No uses la Store submission API para crear el primer envío: una vez creado por API,
+> ese envío ya no se puede editar desde la web y entra en un estado de error irrecuperable.

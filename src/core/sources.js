@@ -61,7 +61,7 @@ function openUrl(url, { timeout = 10000, headers = {}, redirects = 0, followRedi
       method: 'GET',
       timeout,
       headers: {
-        'User-Agent': 'ApkStart/0.3 (Windows)',
+        'User-Agent': 'ApkBuddyStart/0.3 (Windows)',
         'Accept-Encoding': 'identity',
         ...headers,
       },
@@ -243,7 +243,7 @@ class Sources {
    * 而 `releases/latest` 这个网页跳转是走 CDN 的，不消耗 API 额度。
    *
    * 拿到 tag 之后资产名可以按发布约定拼出来：
-   *   ApkStart-<tag>-win64-portable.zip / ApkStart-<version>-Setup.exe / ApkStart-runtime-<tag>.zip
+   *   ApkBuddyStart-<tag>-win64-portable.zip / ApkBuddyStart-<version>-Setup.exe / ApkBuddyStart-runtime-<tag>.zip
    */
   async _releaseTagViaRedirect(id) {
     const s = SOURCES[id];
@@ -260,9 +260,9 @@ class Sources {
     const s = SOURCES[id];
     const ver = String(tag).replace(/^v/i, '');
     const names = [
-      `ApkStart-${tag}-win64-portable.zip`,
-      `ApkStart-${ver}-Setup.exe`,
-      `ApkStart-runtime-${tag}.zip`,
+      `ApkBuddyStart-${tag}-win64-portable.zip`,
+      `ApkBuddyStart-${ver}-Setup.exe`,
+      `ApkBuddyStart-runtime-${tag}.zip`,
     ];
     // GitHub 和 Gitee 都支持 /releases/download/<tag>/<文件名> 这种规范地址
     // （实测 Gitee 会 302 到 foruda.gitee.com 的附件地址，能正常下到完整字节），
@@ -369,8 +369,8 @@ class Sources {
         if (!key) continue;
         // Gitee 会把「源码包」自动挂成资产（v0.3.2.zip / v0.3.2.tar.gz），
         // 这些不是安装包，`\.zip$` 的匹配规则会把它当成更新包下载下来 —— 必须排除。
-        // 我们自己的发布资产统一以 ApkStart 开头，按这个前缀白名单更安全。
-        if (!/^ApkStart/i.test(key)) continue;
+        // 我们自己的发布资产统一以 ApkBuddyStart 开头，按这个前缀白名单更安全。
+        if (!/^ApkBuddyStart/i.test(key)) continue;
         raw.push({
           name: key,
           size: Number(a.size) || 0,

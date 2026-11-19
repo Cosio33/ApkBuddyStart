@@ -1,6 +1,6 @@
 'use strict';
 /**
- * Emulator 引擎：驱动 Google 官方 Android Emulator 作为 ApkStart 的运行时。
+ * Emulator 引擎：驱动 Google 官方 Android Emulator 作为 ApkBuddyStart 的运行时。
  *
  * 与旧版最大的不同：这里不再假设「一套参数在所有电脑上都能跑」。
  *  1. 用 doctor.chooseProfile() 按内存/CPU/磁盘/加速状态/引擎版本自动推导参数；
@@ -77,7 +77,7 @@ class EmulatorEngine {
 
   /**
    * 把「最后一次启动失败」落盘。
-   * 旧版只放在内存里（this.attempts），用户重启 ApkStart 后再导出诊断报告，
+   * 旧版只放在内存里（this.attempts），用户重启 ApkBuddyStart 后再导出诊断报告，
    * 报告里就是 attempts: []、bootLog: [] 一片空白，只能在日志里翻 —— 这也是
    * issue #20/#25 里「附了报告却看不出原因」的直接原因。
    */
@@ -459,7 +459,7 @@ class EmulatorEngine {
 
     const cfg = [
       `AvdId=${AVD_NAME}`,
-      'avd.ini.displayname=ApkStart',
+      'avd.ini.displayname=ApkBuddyStart',
       'avd.ini.encoding=UTF-8',
       `abi.type=${choice.abi}`,
       `hw.cpu.arch=${cpuArch}`,
@@ -515,7 +515,7 @@ class EmulatorEngine {
    *
    * 为什么必须自己做（三条都是实测踩出来的）：
    *  1. 系统镜像包里的 userdata.img 是 1MB 全零占位，真正格式化靠 avdmanager 调 SDK 的
-   *     mke2fs。ApkStart 直接写 config.ini 拉 emulator，跳过那一步 → /data 全零 →
+   *     mke2fs。ApkBuddyStart 直接写 config.ini 拉 emulator，跳过那一步 → /data 全零 →
    *     内核 "Invalid ext4 superblock on /dev/block/vdc" → guest 掉进 recovery 重启循环 →
    *     adbd 永远不上线 → 上层 probe 一直 pending，最后 240s 超时。原表现：点开要等好几分钟。
    *  2. emulator 自带的 e2fsck/resize2fs 是 cygwin 版 e2fsprogs 1.42.12，**不认识 encrypt
@@ -742,9 +742,9 @@ class EmulatorEngine {
       cwd: path.dirname(loc.emulatorExe),
       env,
       windowsHide: true,
-      // detached: 让模拟器独立于 ApkStart 进程组。
+      // detached: 让模拟器独立于 ApkBuddyStart 进程组。
       // Electron 退出时会把自己创建的 job 对象关掉，顺带把子进程一起杀掉——
-      // 表现就是"关掉 ApkStart 再打开又要冷启动 20 多秒"。独立出去之后模拟器留着，
+      // 表现就是"关掉 ApkBuddyStart 再打开又要冷启动 20 多秒"。独立出去之后模拟器留着，
       // 下次启动直接接管（见 Runtime.adoptExisting），点开就是秒进。
       detached: true,
       stdio: ['ignore', 'pipe', 'pipe'],
@@ -784,7 +784,7 @@ class EmulatorEngine {
 
     // qemu 是 detached 的独立进程，等它真正起来再把优先级降下来。
     // 不降的话 2~4 个 vCPU 线程会以 Normal 优先级和 Windows 桌面抢 CPU，
-    // 用户最直观的感受就是「一打开 ApkStart，鼠标就发飘、整机变卡」。
+    // 用户最直观的感受就是「一打开 ApkBuddyStart，鼠标就发飘、整机变卡」。
     const perf = this.settings?.engine?.priorityMode === 'performance';
     setTimeout(() => {
       this.setPriority(perf ? 'normal' : 'below').catch(() => {});
@@ -1411,7 +1411,7 @@ class EmulatorEngine {
         const bootMs = Date.now() - started;
         // 这一次真的起来了：清掉上次的失败记录，避免以后「诊断」翻出旧账
         this._clearFailure();
-        // 一定要存 quickboot 快照：模拟器进程会随 ApkStart 退出而结束（Electron 的
+        // 一定要存 quickboot 快照：模拟器进程会随 ApkBuddyStart 退出而结束（Electron 的
         // job 对象会连带杀掉子进程），下次打开有没有快照直接决定是 25 秒还是 7 秒。
         // 装完新应用时 installer 会作废快照，避免"重启后应用消失"。
         this.snapshotWorthSaving = true;
@@ -1653,7 +1653,7 @@ class EmulatorEngine {
 
   /**
    * 从 emulator.log 文件尾部读最近 n 行（内存缓冲为空时用）。
-   * 用户重启 ApkStart 再导出诊断报告时，内存里的 this._log 已经空了，
+   * 用户重启 ApkBuddyStart 再导出诊断报告时，内存里的 this._log 已经空了，
    * 旧版报告因此只剩一句 UNKNOWN —— 真实崩溃原因全在日志文件里。
    */
   tailLogFile(n = 300) {

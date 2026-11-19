@@ -1,5 +1,5 @@
 'use strict';
-/* 应用窗口标题栏：只有 旋转 / 最小化 / 最大化 / 关闭，其余设置都在 ApkStart 主界面 */
+/* 应用窗口标题栏：只有 旋转 / 最小化 / 最大化 / 关闭，其余设置都在 ApkBuddyStart 主界面 */
 const api = window.apkstart;
 const $ = (id) => document.getElementById(id);
 

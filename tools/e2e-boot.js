@@ -1,8 +1,8 @@
 'use strict';
 /**
- * 端到端引导测速：直接驱动 Runtime，输出每个阶段耗时。
- * 用法：node tools/e2e-boot.js <appRoot> [--stop|--keep]
- *   appRoot = 安装目录里的 resources/app（能找到 runtime/ 的那个）
+ * Medición de tiempos de arranque de extremo a extremo: controlar Runtime directamente y mostrar el tiempo de cada fase.
+ * Uso: node tools/e2e-boot.js <appRoot> [--stop|--keep]
+ *   appRoot = resources/app de la instalación (la que contiene runtime/)
  */
 const path = require('path');
 const { Runtime } = require('../src/core/engine');

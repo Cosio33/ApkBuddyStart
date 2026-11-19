@@ -1,9 +1,9 @@
 'use strict';
 /**
- * 运行时引擎：ApkStart 自带的 QEMU + Android-x86 虚拟机
+ * 运行时引擎：ApkBuddyStart 自带的 QEMU + Android-x86 虚拟机
  *
  * 设计原则：
- *  - 默认完全自持（builtin）：adb / QEMU / 系统镜像都由 ApkStart 自己管理，不依赖任何第三方模拟器
+ *  - 默认完全自持（builtin）：adb / QEMU / 系统镜像都由 ApkBuddyStart 自己管理，不依赖任何第三方模拟器
  *  - 所有对安卓的操作统一走 adb，因此引擎可替换
  *  - 虚拟机按需启动，空闲自动回收；启动后常驻复用，装/开应用几乎零等待
  */
@@ -66,7 +66,7 @@ class Runtime {
      *
      * 0.5.6 起这里**只有一个实现**：builtin（自带 emulator + 系统镜像）。
      * 不再有 mumu / fydeos / attach 这些分支 —— 任何机器、任何设置、任何残留配置
-     * 都只会拿到自带运行时，保证 ApkStart 永远独立运行、与第三方模拟器无关。
+     * 都只会拿到自带运行时，保证 ApkBuddyStart 永远独立运行、与第三方模拟器无关。
      */
     this._backend = null;
     this._backendId = '';
@@ -287,7 +287,7 @@ class Runtime {
     const accel = hv.whpx ? 'whpx' : 'tcg';
 
     const args = [
-      '-name', 'ApkStart Runtime',
+      '-name', 'ApkBuddyStart Runtime',
       '-machine', `q35,accel=${accel}`,
       '-cpu', hv.whpx ? 'host' : 'max',
       '-smp', String(Math.max(2, s.engine.cores || 4)),
@@ -840,7 +840,7 @@ class Runtime {
    * 接管上一次运行留下的模拟器。
    * 每台模拟器都有自己的控制台端口（5554/5556/…），adb 端口是 +1。
    * 端口能连上并且 system 已经 boot_completed，就直接当成我们的运行时用，
-   * 这样「关掉 ApkStart 再点开应用」是秒进，而不是再冷启一台。
+   * 这样「关掉 ApkBuddyStart 再点开应用」是秒进，而不是再冷启一台。
    */
   /**
    * 找出所有还活着的模拟器控制台端口。
@@ -953,7 +953,7 @@ class Runtime {
 
   /**
    * 清理上一次运行遗留、却没被接管的孤儿模拟器。
-   * 关掉 ApkStart 时 emulator 是 detached 的，qemu 会存活；下次启动时它仍占着 AVD 锁，
+   * 关掉 ApkBuddyStart 时 emulator 是 detached 的，qemu 会存活；下次启动时它仍占着 AVD 锁，
    * 表现为冷启直接 FATAL "Running multiple emulators with the same AVD"。
    * 实现收敛到 EmulatorEngine，重试路径（killAttempt）也用同一份逻辑。
    */
@@ -981,7 +981,7 @@ class Runtime {
       return { ok: true, client, engine: 'builtin', reused: true };
     }
 
-    // 上一次 ApkStart 退出时模拟器会留着（下次点开秒进），但新进程里没有它的
+    // 上一次 ApkBuddyStart 退出时模拟器会留着（下次点开秒进），但新进程里没有它的
     // 句柄，adb server 也可能被重启过——只靠 isOnline() 会判成"没有运行时"，
     // 于是又开一台新的。这里先把还活着的模拟器接管过来，避免重复开机器吃内存。
     const adopted = await this.adoptExisting({ onLog });
@@ -1021,7 +1021,7 @@ class Runtime {
 
     // emulator 路径：镜像即系统，没有"安装到磁盘"这一步
     if (env.emulator.ok && env.sysimg.ok) {
-      // 关掉 ApkStart 后可能残留未接管的模拟器（detached 的 qemu 仍存活），
+      // 关掉 ApkBuddyStart 后可能残留未接管的模拟器（detached 的 qemu 仍存活），
       // 它一直占着 AVD 锁，会让冷启直接 FATAL "Running multiple emulators with the same AVD"。
       // 接管失败时先把这些孤儿清掉，再冷启，保证「关掉再开」一定能起来。
       await this.killOrphanEmulators({ onLog }).catch(() => {});
@@ -1577,7 +1577,7 @@ class Runtime {
     // 这里【绝对不能】强杀 qemu：
     //  1) 强杀会把正在写盘的 quickboot 快照截断，只留下几 GB 的 ram.img 空壳，
     //     下次开机加载失败 → 全量冷启动，这就是「每次打开都要等两分钟」的直接原因；
-    //  2) 留着它，下次打开 ApkStart 可以直接接管，点应用秒开（WSA / 应用宝电脑版同款行为）。
+    //  2) 留着它，下次打开 ApkBuddyStart 可以直接接管，点应用秒开（WSA / 应用宝电脑版同款行为）。
     // 卸载时另走一条路（app:removeSelf 会显式清理进程）。
     if (this.vmProc) {
       try { this.vmProc.kill(); } catch (_) { /* ignore */ }

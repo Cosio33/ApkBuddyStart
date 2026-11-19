@@ -1,19 +1,19 @@
 'use strict';
 /**
- * 把一版发布同步到 Gitee。
+ * Sincronizar una versión publicada con Gitee.
  *
- * 为什么需要这个脚本：Gitee 发行版附件单文件上限 100MB（实测 104,857,600 字节，
- * 104,800,000 的上传能成功）。便携包用 7-Zip 压出来约 99.6MB，现在可以直接放
- * 一个完整 zip，用户点开就能解压 —— 不再切 part1/part2（那种包必须按顺序拼接，
- * 手动下载的人根本用不了）。只有真的超过上限时才会退回分片，应用端 updater
- * 两套都认。
- * 安装版 Setup（1.4GB）与运行时整包（1.4GB）超限太多，继续留在 GitHub ——
- * 应用端对「哪个源有资产」是并集处理，不影响更新。
+ * Por qué existe este script: Gitee limita cada archivo adjunto a 100 MB (en pruebas, 104,857,600 bytes,
+ * y se pueden subir 104,800,000). El paquete portátil comprimido con 7-Zip ocupa unos 99,6 MB, así que se puede subir
+ * un zip completo y el usuario solo tiene que descomprimirlo: ya no se divide en part1/part2 (esas piezas hay que unirlas en orden,
+ * y quien descarga a mano no puede usarlas). Solo se recurre a la división si se supera el límite; el updater de la aplicación
+ * admite ambos formatos.
+ * El instalador Setup (1,4 GB) y el paquete completo del runtime (1,4 GB) superan demasiado el límite y siguen en GitHub:
+ * la aplicación trata la disponibilidad de recursos en cada fuente como una unión, así que la actualización no se ve afectada.
  *
- * 用法：
+ * Uso:
  *   GITEE_TOKEN=xxxx node tools/publish-gitee.js v0.3.3 D:/dist
- *     v0.3.3   要发布的 tag（必须是已推送到 Gitee 的 tag）
- *     D:/dist  目录里放 ApkStart-v0.3.3-win64-portable.zip（可选，也可用 --zip 指定）
+ *     v0.3.3   tag a publicar (debe estar ya enviado a Gitee)
+ *     D:/dist  directorio que contiene ApkBuddyStart-v0.3.3-win64-portable.zip (opcional; también se puede indicar con --zip)
  *
  *   node tools/publish-gitee.js v0.3.3 --zip D:/x.zip --notes notes.md
  */
@@ -23,8 +23,8 @@ const path = require('path');
 const OWNER = 'daily-miku';
 const REPO = 'apkstart';
 const API = `https://gitee.com/api/v5/repos/${OWNER}/${REPO}`;
-const HARD_LIMIT = 100 * 1024 * 1024;  // Gitee 附件单文件上限（100MiB，实测可用）
-const PART_LIMIT = 99 * 1024 * 1024;   // 真要分片时的单片大小，留 1MB 给 multipart 头
+const HARD_LIMIT = 100 * 1024 * 1024;  // Límite de un solo archivo adjunto en Gitee (100 MiB, comprobado)
+const PART_LIMIT = 99 * 1024 * 1024;   // Tamaño de cada parte si hay que dividir; se reserva 1 MB para la cabecera multipart
 
 function arg(name, def = '') {
   const i = process.argv.indexOf(name);
@@ -33,7 +33,7 @@ function arg(name, def = '') {
 
 async function api(method, p, body) {
   const token = process.env.GITEE_TOKEN;
-  if (!token) throw new Error('缺少环境变量 GITEE_TOKEN');
+  if (!token) throw new Error('Falta la variable de entorno GITEE_TOKEN');
   const url = `${API}${p}${p.includes('?') ? '&' : '?'}access_token=${encodeURIComponent(token)}`;
   const res = await fetch(url, {
     method,
@@ -42,15 +42,15 @@ async function api(method, p, body) {
   });
   const text = await res.text();
   let json = null;
-  try { json = JSON.parse(text); } catch (_) { /* 可能是空响应 */ }
+  try { json = JSON.parse(text); } catch (_) { /* Quizá sea una respuesta vacía */ }
   if (!res.ok) throw new Error(`${method} ${p} → ${res.status} ${text.slice(0, 300)}`);
   return json || {};
 }
 
-/** 切分大文件；返回切成后的路径数组。
- *  阈值是 HARD_LIMIT（100MiB，Gitee 真实上限），不是 PART_LIMIT ——
- *  否则 99~100MiB 的包明明能整包上传，却会被白白切成分片，
- *  手动下载的人还得按顺序拼接才能解压（这个脚本存在的意义就是避免这种包）。 */
+/** Dividir un archivo grande; devuelve un array con las rutas resultantes.
+ *  El umbral es HARD_LIMIT (100 MiB, el límite real de Gitee), no PART_LIMIT:
+ *  si no, un paquete de 99~100 MiB que podría subirse completo se dividiría sin necesidad,
+ *  y quien lo descarga a mano tendría que unir las partes para descomprimirlo (precisamente lo que este script evita). */
 function splitFile(file, threshold, chunk = PART_LIMIT) {
   const size = fs.statSync(file).size;
   if (size <= threshold) return [];
@@ -76,10 +76,10 @@ function splitFile(file, threshold, chunk = PART_LIMIT) {
 }
 
 /**
- * 上传单个附件。
- * 95MB 的整包是一次 POST 传完的（Gitee 没有分片上传接口），国内链路上很容易
- * 传到一半就 fetch failed —— 以前这里没有重试，一次抖动就得整条命令重跑，
- * 而重跑还要先删干净旧附件，很折腾。所以这里带 3 次重试 + 递增等待。
+ * Subir un único archivo adjunto.
+ * Un paquete completo de 95 MB se envía en una sola petición POST (Gitee no tiene API de subida por partes) y, en la red nacional,
+ * es fácil que falle a mitad de transferencia; antes no había reintentos y un solo fallo obligaba a repetir todo el comando,
+ * además de tener que borrar antes los adjuntos antiguos. Por eso hay 3 reintentos con espera creciente.
  */
 async function upload(releaseId, file, attempts = 3) {
   const token = process.env.GITEE_TOKEN;
@@ -96,38 +96,38 @@ async function upload(releaseId, file, attempts = 3) {
       // eslint-disable-next-line no-await-in-loop
       const text = await res.text();
       if (res.ok) {
-        // Gitee 的 attach_files 有时会返回 200 + {"message": "..."} 而不是错误码，
-        // 直接 JSON.parse 当成功会让整步「成功但没传上去」（v0.5.0 就这么丢过包）。
-        // 所以必须确认响应里真的有附件对象，否则当成可重试的失败。
+        // El attach_files de Gitee a veces devuelve 200 + {"message": "..."} en vez de un código de error,
+        // Tratar el JSON.parse directo como éxito deja el paso "correcto pero sin archivo" (en v0.5.0 se perdió un paquete así).
+        // Hay que confirmar que la respuesta contenga un objeto de adjunto; si no, se considera un fallo reintentable.
         let j = null;
-        try { j = JSON.parse(text); } catch (_) { /* 空响应也当失败 */ }
+        try { j = JSON.parse(text); } catch (_) { /* Respuesta vacía también cuenta como fallo */ }
         if (j && (j.id || j.name)) return j;
-        lastErr = new Error(`接口返回 200 但没有附件信息：${text.slice(0, 160)}`);
+        lastErr = new Error(`La API devolvió 200 pero sin información del adjunto: ${text.slice(0, 160)}`);
       } else {
-        // 4xx（除 429）不值得重试：token 失效、文件名冲突之类重传也没用
+        // Los 4xx (salvo 429) no merecen reintento: un token caducado o un conflicto de nombre no se arregla al repetir
         if (res.status >= 400 && res.status < 500 && res.status !== 429) {
-          throw new Error(`上传 ${name} 失败：${res.status} ${text.slice(0, 200)}`);
+          throw new Error(`Error al subir ${name}: ${res.status} ${text.slice(0, 200)}`);
         }
         lastErr = new Error(`${res.status} ${text.slice(0, 120)}`);
       }
     } catch (e) {
       lastErr = e;
-      if (/^上传 .* 失败/.test(e.message)) throw e;
+      if (/^Error al subir .*/.test(e.message)) throw e;
     }
     if (i < attempts) {
       const wait = i * 8;
-      console.warn(`   第 ${i} 次上传失败（${lastErr.message}），${wait} 秒后重试…`);
+      console.warn(`   Falló el intento ${i} de subida (${lastErr.message}); se reintenta en ${wait} s…`);
       // eslint-disable-next-line no-await-in-loop
       await new Promise((r) => setTimeout(r, wait * 1000));
     }
   }
-  throw new Error(`上传 ${name} 失败（已试 ${attempts} 次）：${lastErr && lastErr.message}`);
+  throw new Error(`Error al subir ${name} (se intentó ${attempts} veces): ${lastErr && lastErr.message}`);
 }
 
 (async () => {
   const tag = process.argv[2];
   if (!tag || !/^v\d/.test(tag)) {
-    console.error('用法：GITEE_TOKEN=xxx node tools/publish-gitee.js v0.3.3 [--zip 路径] [--notes 文件]');
+    console.error('Uso:GITEE_TOKEN=xxx node tools/publish-gitee.js v0.3.3 [--zip ruta] [--notes archivo]');
     process.exit(1);
   }
   const dir = process.argv[3] && !process.argv[3].startsWith('--') ? process.argv[3] : '';
@@ -139,15 +139,15 @@ async function upload(releaseId, file, attempts = 3) {
     if (hit) zip = path.join(dir, hit);
   }
   if (!zip || !fs.existsSync(zip)) {
-    console.error(`找不到便携包：${zip || '(未指定)'}。用 --zip 指定，或把 zip 放进 ${dir}`);
+    console.error(`No se encontró el paquete portátil: ${zip || '(sin especificar)'}. Indícalo con --zip o coloca el zip en ${dir}`);
     process.exit(1);
   }
   const notesFile = arg('--notes', '');
   const body = notesFile && fs.existsSync(notesFile)
     ? fs.readFileSync(notesFile, 'utf8')
-    : `便携版安装包（单个 zip，解压即用；应用内也能自动更新）。完整安装版与运行时整包在 GitHub Releases。`;
+    : `Paquete portátil (un solo zip, se descomprime y se usa; también se actualiza automáticamente desde la aplicación). El instalador completo y el paquete del runtime están en GitHub Releases.`;
 
-  console.log('1) 查找/创建发行版', tag);
+  console.log('1) Buscar/crear la versión', tag);
   const list = await api('GET', `/releases?per_page=50`);
   let rel = (Array.isArray(list) ? list : []).find((r) => r.tag_name === tag);
   if (!rel) {
@@ -157,36 +157,36 @@ async function upload(releaseId, file, attempts = 3) {
       target_commitish: 'main',
       body,
     });
-    console.log('   已创建 id =', rel.id);
+    console.log('   Creada con id =', rel.id);
   } else {
-    console.log('   已存在 id =', rel.id);
+    console.log('   Ya existe con id =', rel.id);
   }
 
-  // 重发同一版本时（改过代码重新打包），旧附件必须先删掉，否则页面上会同时挂着
-  // 新旧两套 part1/part2，客户端按名字取到的是哪一份完全看运气。
+  // Al volver a publicar la misma versión (código modificado y reempaquetado), hay que borrar primero los adjuntos antiguos; si no, la página muestra a la vez
+  // las dos series de part1/part2 y cuál descarga el cliente depende de la suerte.
   if (process.argv.includes('--replace')) {
-    console.log('2) 清理同名旧附件');
+    console.log('2) Limpiar los adjuntos antiguos con el mismo nombre');
     const list = await api('GET', `/releases/${rel.id}/attach_files`);
-    const olds = (Array.isArray(list) ? list : []).filter((a) => /^ApkStart-.*\.zip(\.part\d+)?$/i.test(a.name || ''));
+    const olds = (Array.isArray(list) ? list : []).filter((a) => /^ApkBuddyStart-.*\.zip(\.part\d+)?$/i.test(a.name || ''));
     for (const a of olds) {
       // eslint-disable-next-line no-await-in-loop
       await api('DELETE', `/releases/${rel.id}/attach_files/${a.id}`);
-      console.log('   删除', a.name);
+      console.log('   Eliminado', a.name);
     }
   }
 
   const zipSize = fs.statSync(zip).size;
   if (zipSize > HARD_LIMIT) {
-    console.warn(`⚠️  便携包 ${(zipSize / 1048576).toFixed(1)} MB 超过 Gitee 单文件上限，只能切成分片；`
-      + '手动下载的人需要按顺序拼接才能解压，建议先用 `node build/zip.js` 压紧、或给包瘦身。');
+    console.warn(`⚠️  El paquete portátil ${(zipSize / 1048576).toFixed(1)} MB supera el límite de un solo archivo de Gitee y debe dividirse;`
+      + 'quien lo descargue a mano tendrá que unir las partes en orden; se recomienda comprimir antes con `node build/zip.js` o reducir el paquete.');
   }
-  console.log('3) 准备上传（整包优先，超限才切分）');
+  console.log('3) Preparar la subida (primero el paquete completo; solo se divide si supera el límite)');
   const parts = splitFile(zip, HARD_LIMIT, PART_LIMIT);
   const files = parts.length ? parts : [zip];
 
-  // 同一个版本可能换过打包方式（整包 ↔ 分片）：把另一种形式的同名附件删掉，
-  // 否则发行版里同时挂着 `x.zip` 和 `x.zip.part1/part2`，客户端取哪个全看运气。
-  // --replace 会连别的版本号一起清，这里只清「当前这个包名」的另一种形态。
+  // Una misma versión puede haber cambiado de formato de empaquetado (completo ↔ dividido): hay que borrar el adjunto del otro formato,
+  // si no, la versión tendrá a la vez `x.zip` y `x.zip.part1/part2` y cuál descarga el cliente depende de la suerte.
+  // --replace limpia también otras versiones; aquí solo se limpia la otra forma del nombre de paquete actual.
   {
     const base = path.basename(zip).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     const other = parts.length ? new RegExp(`^${base}$`, 'i') : new RegExp(`^${base}\\.part\\d+$`, 'i');
@@ -195,32 +195,32 @@ async function upload(releaseId, file, attempts = 3) {
       if (!other.test(a.name || '')) continue;
       // eslint-disable-next-line no-await-in-loop
       await api('DELETE', `/releases/${rel.id}/attach_files/${a.id}`);
-      console.log('   删除上一版式的旧附件', a.name);
+      console.log('   Eliminado el adjunto anterior de otra forma', a.name);
     }
   }
 
   for (const f of files) {
-    console.log(`   上传 ${path.basename(f)} (${(fs.statSync(f).size / 1048576).toFixed(1)} MB)`);
+    console.log(`   Subiendo ${path.basename(f)} (${(fs.statSync(f).size / 1048576).toFixed(1)} MB)`);
     // eslint-disable-next-line no-await-in-loop
     await upload(rel.id, f);
   }
 
-  // 回查一遍：接口返回成功不等于附件真的挂上去了（v0.5.0 就是这样「成功但没包」，
-  // 用户下到 404 才发现）。这里必须能在 attach_files 里看到同名附件，否则让整步失败。
-  console.log('4) 回查附件');
+  // Verificar: que la API devuelva éxito no significa que el adjunto esté realmente subido (en v0.5.0 ocurría "éxito sin paquete",
+  // y el usuario lo descubría al recibir un 404). El adjunto debe aparecer en attach_files; si no, se falla el paso.
+  console.log('4) Verificar los adjuntos');
   {
     const list = await api('GET', `/releases/${rel.id}/attach_files`);
     const have = new Set((Array.isArray(list) ? list : []).map((a) => a.name));
     const missing = files.map((f) => path.basename(f)).filter((n) => !have.has(n));
     if (missing.length) {
-      throw new Error(`上传后附件缺失：${missing.join(', ')}（现有：${[...have].join(', ') || '无'}）`);
+      throw new Error(`Faltan adjuntos tras la subida: ${missing.join(', ')} (existentes: ${[...have].join(', ') || 'ninguno'})`);
     }
-    console.log('   OK：' + files.map((f) => path.basename(f)).join(', '));
+    console.log('   OK:' + files.map((f) => path.basename(f)).join(', '));
   }
 
   for (const p of parts) fs.rmSync(p, { force: true });
-  console.log(`\n完成：https://gitee.com/${OWNER}/${REPO}/releases/tag/${tag}`);
+  console.log(`\nCompletado: https://gitee.com/${OWNER}/${REPO}/releases/tag/${tag}`);
 })().catch((e) => {
-  console.error('失败：', e.message);
+  console.error('Error:', e.message);
   process.exit(1);
 });

@@ -62,7 +62,7 @@ $r = New-Object W+RECT
 Write-Output ("BEFORE x={0} y={1} w={2} h={3}" -f $r.L, $r.T, ($r.R - $r.L), ($r.B - $r.T))
 
 $form = New-Object System.Windows.Forms.Form
-$form.Text = 'ApkStartHost'
+$form.Text = 'ApkBuddyStartHost'
 $form.StartPosition = 'Manual'
 $form.Location = New-Object System.Drawing.Point 40, 40
 $form.ClientSize = New-Object System.Drawing.Size $W, $H

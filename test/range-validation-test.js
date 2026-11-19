@@ -1,11 +1,11 @@
 'use strict';
 /**
- * 下载器范围校验的纯 Node 测试（不需要真实网络/模拟器）。
- * 覆盖 #92 贡献的 Content-Range 校验与 416 续传修复：
- *   - validRange 逐项比对起止位、总大小、Content-Length；
- *   - 单流遇到 416 时丢弃坏残片、重新完整下载；
- *   - 分块/多源下载遇到不匹配的范围时拒绝，不把损坏字节拼进目标文件。
- * 运行：node test/range-validation-test.js
+ * Pure Node tests for downloader range validation (no real network/emulator needed).
+ * Covers the Content-Range validation and 416 resume fix contributed in #92:
+ *   - validRange compares start/end positions, total size, and Content-Length item by item;
+ *   - on a 416, a single stream discards the bad partial file and downloads again from scratch;
+ *   - chunked/multi-source downloads reject mismatched ranges instead of stitching corrupt bytes into the target.
+ * Run: node test/range-validation-test.js
  */
 const assert = require('assert/strict');
 const http = require('http');
@@ -34,30 +34,30 @@ function serve(handler) {
 const baseOf = (server) => `http://127.0.0.1:${server.address().port}`;
 
 (async () => {
-  console.log('\n[download.js Content-Range 校验]');
+  console.log('\n[download.js Content-Range validation]');
 
-  test('validRange 接受完全匹配的响应', () => {
+  test('validRange accepts a fully matching response', () => {
     const res = { headers: { 'content-range': 'bytes 100-199/500', 'content-length': '100' } };
     assert.equal(validRange(res, 100, 199, 500), true);
   });
-  test('validRange 容忍缺失的 Content-Length', () => {
+  test('validRange tolerates a missing Content-Length', () => {
     const res = { headers: { 'content-range': 'bytes 100-199/500' } };
     assert.equal(validRange(res, 100, 199, 500), true);
   });
-  test('validRange 拒绝错误起点/终点/总大小/长度', () => {
+  test('validRange rejects wrong start/end/total size/length', () => {
     const hdr = (cr, len) => ({ headers: { 'content-range': cr, 'content-length': len } });
-    assert.equal(validRange(hdr('bytes 101-199/500', '99'), 100, 199, 500), false, '起点不符');
-    assert.equal(validRange(hdr('bytes 100-198/500', '99'), 100, 199, 500), false, '终点不符');
-    assert.equal(validRange(hdr('bytes 100-199/400', '100'), 100, 199, 500), false, '总大小不符');
-    assert.equal(validRange(hdr('bytes 100-199/500', '99'), 100, 199, 500), false, '长度不符');
-    assert.equal(validRange(hdr('', '100'), 100, 199, 500), false, '缺少 Content-Range');
+    assert.equal(validRange(hdr('bytes 101-199/500', '99'), 100, 199, 500), false, 'Start position mismatch');
+    assert.equal(validRange(hdr('bytes 100-198/500', '99'), 100, 199, 500), false, 'End position mismatch');
+    assert.equal(validRange(hdr('bytes 100-199/400', '100'), 100, 199, 500), false, 'Total size mismatch');
+    assert.equal(validRange(hdr('bytes 100-199/500', '99'), 100, 199, 500), false, 'Length mismatch');
+    assert.equal(validRange(hdr('', '100'), 100, 199, 500), false, 'Missing Content-Range');
     assert.equal(validRange(hdr('bytes 0-3/8', '4'), 0, 3, 8), true);
   });
 
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'apkstart-range-'));
   try {
-    // /416: 带 Range 就回 416，不带 Range 回完整的 "good"
-    // /bad: 探测 bytes=0-0 回合法头，其余请求一律回 bytes 0-3/8（与请求范围不符）
+    // /416: reply 416 if a Range header is present, otherwise reply the full "good"
+    // /bad: probing bytes=0-0 returns a valid header, all other requests return bytes 0-3/8 (mismatched range)
     const server = await serve((req, res) => {
       const r = req.headers.range;
       if (req.url === '/416') {
@@ -78,29 +78,29 @@ const baseOf = (server) => `http://127.0.0.1:${server.address().port}`;
     });
     const base = baseOf(server);
     try {
-      await atest('单流 416：丢弃坏残片并重新完整下载', async () => {
+      await atest('Single stream 416: discard the bad partial file and download again in full', async () => {
         const out = path.join(dir, 'one');
         fs.writeFileSync(out, 'corrupt data');
         await download(`${base}/416`, out);
         assert.equal(fs.readFileSync(out, 'utf8'), 'good');
       });
 
-      await atest('单流 206 范围不符时拒绝', async () => {
+      await atest('Single stream rejects a mismatched 206 range', async () => {
         const out = path.join(dir, 'resume');
-        fs.writeFileSync(out, 'xxxx'); // 让请求带 Range: bytes=4-
+        fs.writeFileSync(out, 'xxxx'); // make the request carry Range: bytes=4-
         await assert.rejects(download(`${base}/bad`, out), /rango/);
       });
 
-      await atest('downloadParallel 范围不符时拒绝，不留半截文件', async () => {
+      await atest('downloadParallel rejects a mismatched range and leaves no partial file', async () => {
         const out = path.join(dir, 'two');
         await assert.rejects(
           downloadParallel(`${base}/bad`, out, { connections: 2, minChunk: 2, retries: 1 }),
           /rango/,
         );
-        assert.equal(fs.existsSync(out), false, '失败后目标文件应被清理');
+        assert.equal(fs.existsSync(out), false, 'Target file should be cleaned up after failure');
       });
 
-      await atest('downloadMulti 范围不符时拒绝', async () => {
+      await atest('downloadMulti rejects a mismatched range', async () => {
         const out = path.join(dir, 'three');
         await assert.rejects(
           downloadMulti([`${base}/bad1`, `${base}/bad2`], out, { connections: 2, minChunk: 2, retries: 1 }),
@@ -108,7 +108,7 @@ const baseOf = (server) => `http://127.0.0.1:${server.address().port}`;
         );
       });
 
-      await atest('合法范围下载仍然成功（无回归）', async () => {
+      await atest('Valid-range download still succeeds (no regression)', async () => {
         const out = path.join(dir, 'ok');
         const r = await download(`${base}/ok`, out, { retries: 1 });
         assert.equal(fs.readFileSync(out, 'utf8'), 'abcdefgh');
@@ -121,6 +121,6 @@ const baseOf = (server) => `http://127.0.0.1:${server.address().port}`;
     fs.rmSync(dir, { recursive: true, force: true });
   }
 
-  console.log(`\n结果：${passed} 通过，${failed} 失败\n`);
+  console.log(`\nResult: ${passed} passed, ${failed} failed\n`);
   process.exit(failed ? 1 : 0);
 })().catch((e) => { console.error(e); process.exit(1); });

@@ -1,17 +1,17 @@
 'use strict';
 /**
- * 统一图标生成器
+ * Generador unificado de iconos
  *   node_modules/electron/dist/electron.exe build/build-icons.js
  *
- * 一套设计，三种尺寸语言（业界通行做法，不是三套图标）：
- *   1. 主标   ≥64px    build/logo.html 的「APK start」深色磁贴（Chromium 离屏渲染）
- *   2. 简化标 ≤48px    同色板深底 + 安卓绿播放三角（纯 JS 绘制，16px 仍可辨识）
- *   3. 磁贴版          主标裁掉透明边后满幅，交给 Windows 自己裁圆角
+ * Un solo diseño, tres "lenguajes" de tamaño (práctica habitual en la industria, no tres juegos de iconos):
+ *   1. Icono principal   ≥64px    el mosaico oscuro "APK start" de build/logo.html (renderizado fuera de pantalla con Chromium)
+ *   2. Icono simplificado ≤48px    misma paleta sobre fondo oscuro + triángulo de reproducción verde de Android (dibujado en JS puro, aún reconocible a 16px)
+ *   3. Versión mosaico   el icono principal recortado sin bordes transparentes, a tamaño completo; Windows se encarga de redondear las esquinas
  *
- * 产出：
- *   src/ui/assets/logo.png (512) / logo-256 / logo-128 / logo-64    窗口、关于页、Linux
- *   src/ui/assets/tray-16|20|24|32.png                               托盘（简化标）
- *   src/ui/assets/appicon.ico                                        16–256 多尺寸
+ * Salidas:
+ *   src/ui/assets/logo.png (512) / logo-256 / logo-128 / logo-64    ventana, página Acerca de, Linux
+ *   src/ui/assets/tray-16|20|24|32.png                               bandeja (icono simplificado)
+ *   src/ui/assets/appicon.ico                                        múltiples tamaños 16–256
  *   build/store-assets/StoreLogo 50 / Square44 / Square71 /
  *                      Square150 / Square310 / Wide310x150 / Splash 620x300
  *   docs/images/logo.png (1024)
@@ -26,13 +26,13 @@ const UI = path.join(ROOT, 'src', 'ui', 'assets');
 const STORE = path.join(ROOT, 'build', 'store-assets');
 const DOCS = path.join(ROOT, 'docs', 'images');
 
-// 1:1 像素，别让高 DPI 缩放把 1024 渲染成 1280
+// Píxeles 1:1: evita que el escalado de alto DPI renderice 1024 como 1280
 app.commandLine.appendSwitch('force-device-scale-factor', '1');
 app.commandLine.appendSwitch('disable-features', 'CalculateNativeWinOcclusion');
 app.disableHardwareAcceleration();
 
 const SQ = 1024;
-const TILE_RATIO = 896 / 1024;            // 主标里磁贴占画面比例
+const TILE_RATIO = 896 / 1024;            // Proporción que ocupa el mosaico dentro del icono principal
 const TILE_PAD = Math.round((SQ - SQ * TILE_RATIO) / 2);
 
 function ensureDir(p) {
@@ -53,7 +53,7 @@ function save(file, buf) {
   return { file, buf, dim };
 }
 
-/** PNG-in-ICO：Vista 起 ICO 条目可直接内嵌 PNG，不重编码、不丢 alpha。 */
+/** PNG-in-ICO: desde Vista, las entradas ICO pueden incrustar PNG directamente, sin recodificar ni perder alpha. */
 function icoFrom(entries) {
   const items = entries.slice().sort((a, b) => a.size - b.size);
   const head = Buffer.alloc(6);
@@ -77,9 +77,9 @@ function icoFrom(entries) {
   return Buffer.concat([head, dir, ...items.map((i) => i.buf)]);
 }
 
-// 一个窗口画布同时容纳三种布局，渲染后按坐标裁剪。
-// 不要每次新建 BrowserWindow：offscreen 模式下连续 destroy/create 时，
-// 第二次 loadFile 会稳定报 ERR_FAILED（Electron 33 的坑）。
+// Un solo lienzo de ventana contiene los tres diseños; después se recorta por coordenadas.
+// No crear una BrowserWindow nueva cada vez: en modo offscreen, al destruir/crear sucesivamente,
+// el segundo loadFile falla siempre con ERR_FAILED (un problema conocido de Electron 33).
 const CANVAS = 1240;
 let _win = null;
 
@@ -98,7 +98,7 @@ async function ensureWindow() {
   await _win.loadFile(path.join(__dirname, 'logo.html'));
   try {
     await _win.webContents.executeJavaScript('document.fonts.ready.then(() => true)');
-  } catch (_) { /* 老版本没有 fonts API，靠下面的延时 */ }
+  } catch (_) { /* Las versiones antiguas no tienen la API fonts; nos apoyamos en la espera de abajo */ }
   await new Promise((r) => setTimeout(r, 900));
   return _win;
 }
@@ -113,7 +113,7 @@ async function render(layout, w, h) {
   const full = nativeImage.createFromBuffer((await win.webContents.capturePage()).toPNG());
   const got = full.getSize();
   if (got.width < w || got.height < h) {
-    console.log(`  [警告] 画布 ${got.width}x${got.height} 小于 ${w}x${h}，改用缩放`);
+    console.log(`  [Aviso] El lienzo ${got.width}x${got.height} es menor que ${w}x${h}; se usará escalado`);
     return full.resize({ width: w, height: h, quality: 'best' });
   }
   const x = Math.round((got.width - w) / 2);
@@ -126,41 +126,41 @@ function resized(img, w, h) {
 }
 
 app.whenReady().then(async () => {
-  console.log('渲染主标（square 1024）…');
+  console.log('Renderizando icono principal (square 1024)…');
   const square = await render('square', SQ, SQ);
 
-  console.log('渲染宽磁贴（wide 620x300）…');
+  console.log('Renderizando mosaico ancho (wide 620x300)…');
   const wide = await render('wide', 620, 300);
 
-  console.log('渲染启动图（splash 1240x600）…');
+  console.log('Renderizando pantalla de inicio (splash 1240x600)…');
   const splash = await render('splash', 1240, 600);
 
-  // 磁贴版：裁掉主标四周的透明留白，让磁贴满幅，避免开始菜单里图标偏小
+  // Versión mosaico: recortar el margen transparente alrededor del icono principal para que el mosaico ocupe todo el lienzo y evitar que el icono se vea pequeño en el menú Inicio
   const tileBox = { x: TILE_PAD, y: TILE_PAD, width: SQ - TILE_PAD * 2, height: SQ - TILE_PAD * 2 };
   const tile = square.crop(tileBox);
   const tileSize = tile.getSize();
-  console.log(`主标磁贴区 ${tileSize.width}x${tileSize.height}（裁自 1024 中央）`);
+  console.log(`Zona de mosaico del icono principal ${tileSize.width}x${tileSize.height} (recortado del centro de 1024)`);
 
-  console.log('\n输出品牌图：');
+  console.log('\nSalidas de imágenes de marca:');
   save(path.join(DOCS, 'logo.png'), square.toPNG());
   save(path.join(UI, 'logo.png'), resized(square, 512, 512));
   save(path.join(UI, 'logo-256.png'), resized(square, 256, 256));
   save(path.join(UI, 'logo-128.png'), resized(square, 128, 128));
   save(path.join(UI, 'logo-64.png'), resized(square, 64, 64));
 
-  console.log('\n输出托盘图（简化标）：');
+  console.log('\nSalidas de imágenes de bandeja (icono simplificado):');
   for (const s of [16, 20, 24, 32]) {
     save(path.join(UI, `tray-${s}.png`), drawAppIcon(s));
   }
 
-  console.log('\n输出 ICO（16–48 简化标 / 64–256 主标）：');
+  console.log('\nSalidas ICO (16–48 icono simplificado / 64–256 icono principal):');
   const icoEntries = [];
   for (const s of [16, 20, 24, 32, 40, 48]) icoEntries.push({ size: s, buf: drawAppIcon(s) });
   for (const s of [64, 128, 256]) icoEntries.push({ size: s, buf: resized(tile, s, s) });
   const ico = icoFrom(icoEntries);
   save(path.join(UI, 'appicon.ico'), ico);
 
-  console.log('\n输出商店资源：');
+  console.log('\nSalidas de recursos para la tienda:');
   save(path.join(STORE, 'StoreLogo.png'), drawAppIcon(50));
   save(path.join(STORE, 'Square44x44Logo.png'), drawAppIcon(44));
   save(path.join(STORE, 'Square71x71Logo.png'), drawAppIcon(71));
@@ -169,7 +169,7 @@ app.whenReady().then(async () => {
   save(path.join(STORE, 'Wide310x150Logo.png'), resized(wide, 310, 150));
   save(path.join(STORE, 'SplashScreen.png'), resized(splash, 620, 300));
 
-  console.log('\n完成。校验汇总：');
+  console.log('\nCompletado. Resumen de verificación:');
   const check = [
     ['logo-256.png', 256, 256], ['tray-16.png', 16, 16], ['tray-32.png', 32, 32],
     ['StoreLogo.png', 50, 50], ['Square44x44Logo.png', 44, 44], ['Square71x71Logo.png', 71, 71],
@@ -182,13 +182,13 @@ app.whenReady().then(async () => {
     const s = p ? pngSize(fs.readFileSync(p)) : null;
     const ok = !!s && s.w === w && s.h === h;
     if (!ok) bad += 1;
-    console.log(`  ${ok ? 'OK  ' : 'BAD '} ${name} ${s ? `${s.w}x${s.h}` : 'missing'} (期望 ${w}x${h})`);
+    console.log(`  ${ok ? 'OK  ' : 'BAD '} ${name} ${s ? `${s.w}x${s.h}` : 'missing'} (esperado ${w}x${h})`);
   }
   const icoBuf = fs.readFileSync(path.join(UI, 'appicon.ico'));
   const icoCount = icoBuf.readUInt16LE(4);
-  console.log(`  ${icoCount === 9 ? 'OK  ' : 'BAD '} appicon.ico ${icoCount} 个尺寸`);
+  console.log(`  ${icoCount === 9 ? 'OK  ' : 'BAD '} appicon.ico ${icoCount} tamaños`);
   app.exit(bad === 0 && icoCount === 9 ? 0 : 1);
 }).catch((e) => {
-  console.error('生成失败：', e);
+  console.error('Error al generar:', e);
   app.exit(1);
 });

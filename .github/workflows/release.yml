@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   build:
-    name: 构建便携版并发布
+    name: Compilar la versión portable y publicar
     runs-on: windows-latest
 
     steps:
@@ -21,49 +21,50 @@ jobs:
           node-version: 22
           cache: npm
 
-      - name: 安装依赖（含 Electron 运行时）
+      - name: Instalar dependencias (incluye el runtime de Electron)
         run: npm ci
         env:
           ELECTRON_MIRROR: https://npmmirror.com/mirrors/electron/
 
-      - name: 测试
+      - name: Pruebas
         run: npm test
 
-      - name: 打包便携版
+      - name: Empaquetar la versión portable
         run: npm run pack
 
-      # 用 7-Zip 而不是 Compress-Archive：同一个目录，.NET deflate 压出来 105MB，
-      # 7-Zip -mx=9 只要 99.6MB —— 差这 5MB 就决定 Gitee 上放的是「一个能直接解压的
-      # zip」还是「两个必须手工拼接的 part」。build/zip.js 还带体积闸门：超过
-      # 100MiB 直接让 job 失败，避免以后又悄悄退回分片包。
-      - name: 压缩产物（7-Zip，体积闸门 100MiB）
+      # Usar 7-Zip en lugar de Compress-Archive: en el mismo directorio, .NET deflate genera 105 MB,
+      # mientras que 7-Zip -mx=9 solo necesita 99,6 MB — esos 5 MB deciden si en Gitee se publica
+      # «un zip que se descomprime directamente» o «dos partes que hay que unir a mano». build/zip.js
+      # incluye además un límite de tamaño: superar 100 MiB hace fallar el job de inmediato,
+      # para evitar que en el futuro se vuelva a recurrir silenciosamente a los paquetes fragmentados.
+      - name: Comprimir los artefactos (7-Zip, límite de 100 MiB)
         shell: pwsh
         run: |
           $tag = "${{ github.ref_name }}"
           if (-not $tag.StartsWith('v')) { $tag = "v$tag" }
-          node build/zip.js dist/ApkStart-win64-portable "ApkStart-$tag-win64-portable.zip" --limit-mb 100
+          node build/zip.js dist/ApkBuddyStart-win64-portable "ApkBuddyStart-$tag-win64-portable.zip" --limit-mb 100
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          Get-Item "ApkStart-$tag-win64-portable.zip" | Select-Object Name, Length
+          Get-Item "ApkBuddyStart-$tag-win64-portable.zip" | Select-Object Name, Length
 
-      # 创建 Release 并上传轻量便携版（壳层极小，运行时首次启动按需下载）
-      - name: 创建 Release
+      # Crear el Release y subir la versión portable ligera (la carcasa es mínima; el runtime se descarga bajo demanda en el primer inicio)
+      - name: Crear Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         shell: pwsh
         run: |
           $tag = "${{ github.ref_name }}"
           if (-not $tag.StartsWith('v')) { $tag = "v$tag" }
-          $zip = "ApkStart-$tag-win64-portable.zip"
-          # 幂等：release 已存在（如重跑 / 重推 tag）就跳过 create，只上传资产
+          $zip = "ApkBuddyStart-$tag-win64-portable.zip"
+          # Idempotente: si el release ya existe (por reejecución o reenvío del tag), se omite create y solo se suben los archivos
           $existing = gh release view $tag --json tagName -q .tagName 2>$null
-          # 有手写的发版说明就用它（.github/release-notes-<tag>.md），比 --generate-notes
-          # 的「Full Changelog」有用得多；没有才退回自动生成。
+          # Si hay notas de lanzamiento escritas a mano (.github/release-notes-<tag>.md), se usan:
+          # son mucho más útiles que el «Full Changelog» de --generate-notes; si no hay, se genera automáticamente.
           $notes = ".github/release-notes-$tag.md"
           if (-not $existing) {
             if (Test-Path $notes) {
-              gh release create $tag --title "ApkStart $tag" --notes-file $notes
+              gh release create $tag --title "ApkBuddyStart $tag" --notes-file $notes
             } else {
-              gh release create $tag --title "ApkStart $tag" --generate-notes
+              gh release create $tag --title "ApkBuddyStart $tag" --generate-notes
             }
             if ($LASTEXITCODE -ne 0) { exit 1 }
           }
@@ -72,43 +73,43 @@ jobs:
             gh release upload $tag $zip --clobber
             if ($LASTEXITCODE -eq 0) { $ok = $true } else { Start-Sleep -Seconds 15 }
           }
-          if (-not $ok) { Write-Error "上传失败: $zip"; exit 1 }
+          if (-not $ok) { Write-Error "Fallo al subir: $zip"; exit 1 }
           gh release view $tag --json assets --jq '.assets[].name'
 
-      # 同步到 Gitee：国内直连 GitHub 只有几十 KB/s，Gitee 通常能跑几 MB/s。
-      # 便携包压紧后约 99.6MB，在 Gitee 单文件上限（100MB）以内，直接放一个整包，
-      # 用户点开就能解压；只有超限时 publish-gitee.js 才退回 .part1/.part2 分片。
-      # Setup（1.4GB）与运行时整包（1.4GB）超限太多，只留在 GitHub ——
-      # 应用端对「哪个源有资产」是取并集的，不影响更新。
-      # Gitee 同步「缺 token / 网络不通」只告警不阻断：否则整 build job 变红，
-      # 下面 needs: build 的 full job 会被整段跳过，连 GitHub 自己的 Setup / 运行时整包都发不出。
-      # 缺 token 时这一步仍会在日志里标红（continue-on-error 是「可见但非致命」），不静默。
-      - name: 同步便携版到 Gitee
+      # Sincronizar con Gitee: desde China la conexión directa a GitHub va a solo decenas de KB/s, mientras que Gitee suele alcanzar varios MB/s.
+      # El paquete portable comprimido ronda los 99,6 MB y está dentro del límite de 100 MB por archivo de Gitee, así se publica
+      # un único paquete íntegro que el usuario puede descomprimir directamente; publish-gitee.js solo recurre a .part1/.part2 si se excede el límite.
+      # El Setup (1,4 GB) y el runtime íntegro (1,4 GB) superan con creces el límite y solo se quedan en GitHub —
+      # la parte de aplicación toma la unión de «qué fuente tiene cada archivo», así que esto no afecta a las actualizaciones.
+      # La sincronización con Gitee solo avisa, sin bloquear, ante «falta de token / red caída»: si no, todo el job build se pone en rojo,
+      # el job full (needs: build) se salta por completo y ni siquiera se publican el Setup y el runtime de GitHub.
+      # Sin token, este paso sigue marcándose en rojo en el registro (continue-on-error significa «visible pero no fatal»), sin silenciarse.
+      - name: Sincronizar la versión portable a Gitee
         continue-on-error: true
         env:
           GITEE_TOKEN: ${{ secrets.GITEE_TOKEN }}
         shell: pwsh
         run: |
-          # 以前这里是「没配 token 就静默跳过、这一步仍显示成功」——
-          # v0.3.4 就这样在 Gitee 上悄悄少了一个版本，事后才发现。
-          # 现在缺 token 直接让这一步失败，宁可红一次也别再无声无息。
+          # Antes aquí se hacía «si no hay token, omitir en silencio y que el paso siga pareciendo exitoso» —
+          # así fue como en v0.3.4 faltó discretamente una versión en Gitee y solo se descubrió después.
+          # Ahora, sin token, el paso falla directamente: preferimos un aviso rojo antes que otro silencio.
           if (-not $env:GITEE_TOKEN) {
-            Write-Error "缺少 GITEE_TOKEN：Gitee 这一版不会有安装包。请在 Settings → Secrets and variables → Actions 添加 GITEE_TOKEN（勾选 projects + pull_requests 之外的 releases 权限即可）。"
+            Write-Error "Falta GITEE_TOKEN: esta versión no tendrá paquete en Gitee. Añade GITEE_TOKEN en Settings → Secrets and variables → Actions (basta con el permiso releases, además de projects + pull_requests)."
             exit 1
           }
           $tag = "${{ github.ref_name }}"
           if (-not $tag.StartsWith('v')) { $tag = "v$tag" }
-          # 发布说明与 GitHub 用同一份，别让 Gitee 那边只剩一句「便携版安装包」
+          # Usar las mismas notas de lanzamiento que en GitHub; que Gitee no se quede solo con una frase tipo «paquete portable»
           $notes = ".github/release-notes-$tag.md"
           if (Test-Path $notes) {
-            node tools/publish-gitee.js $tag --zip "ApkStart-$tag-win64-portable.zip" --notes $notes
+            node tools/publish-gitee.js $tag --zip "ApkBuddyStart-$tag-win64-portable.zip" --notes $notes
           } else {
-            node tools/publish-gitee.js $tag --zip "ApkStart-$tag-win64-portable.zip"
+            node tools/publish-gitee.js $tag --zip "ApkBuddyStart-$tag-win64-portable.zip"
           }
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
   full:
-    name: 构建完整版（内置运行时，离线开箱即用）
+    name: Compilar la versión completa (runtime incluido, lista para usar sin conexión)
     runs-on: windows-latest
     needs: build
     steps:
@@ -119,49 +120,49 @@ jobs:
           node-version: 22
           cache: npm
 
-      - name: 安装依赖
+      - name: Instalar dependencias
         run: npm ci
         env:
           ELECTRON_MIRROR: https://npmmirror.com/mirrors/electron/
 
-      # 从 Google 官方源组装运行时（emulator + platform-tools + aehd + Play x86_64 镜像）。
-      # 输出到 engine/，与本地开发时的目录结构一致。
-      - name: 组装运行时
+      # Ensamblar el runtime desde las fuentes oficiales de Google (emulator + platform-tools + aehd + imagen Play x86_64).
+      # La salida va a engine/, con la misma estructura de directorios que en el desarrollo local.
+      - name: Ensamblar el runtime
         run: node build/fetch-runtime.js engine
 
-      # prepare-runtime 会把 system.img/vendor.img 压成 xz(LZMA2)。
-      # CI runner 只有 2 核：XZ_PRESET=6 把压缩时间从 ~2h 降到 ~40min（体积 +3%）。
-      # XZ_TIMEOUT_MS 是看门狗：超时自动 kill 并落 gzip 兜底，
-      # 绝不重演「stdin 没接 EOF → 0 字节输出 → 挂死 3 小时」。
-      - name: 准备运行时（xz 压缩，CI 降档加速）
+      # prepare-runtime comprime system.img/vendor.img con xz (LZMA2).
+      # El runner de CI solo tiene 2 núcleos: XZ_PRESET=6 reduce el tiempo de compresión de ~2 h a ~40 min (+3 % de tamaño).
+      # XZ_TIMEOUT_MS es un perro guardián: si se agota el tiempo, mata el proceso y recurre a gzip,
+      # para no repetir nunca más el «stdin sin EOF → salida de 0 bytes → colgado durante 3 horas».
+      - name: Preparar el runtime (compresión xz, nivel reducido para acelerar la CI)
         run: node build/prepare-runtime.js --force
         env:
           XZ_PRESET: '6'
           XZ_TIMEOUT_MS: '3600000'
 
-      # 内置微软 VC++ 2015-2022 x64 运行库：安卓模拟器（Qt6）与 qemu 都依赖它，
-      # 缺了在「其他电脑」上会直接起不来（0xc0000135 / MSVCP140 缺失）。
-      # 放到 build/runtime 内，随 extraResources 一起打进安装包；离线也能一键安装。
-      - name: 下载 VC++ 运行库（离线内置）
+      # Incluir el runtime de Microsoft VC++ 2015-2022 x64: tanto el emulador de Android (Qt6) como qemu lo necesitan,
+      # y sin él los programas no arrancan «en otros equipos» (0xc0000135 / falta MSVCP140).
+      # Se coloca dentro de build/runtime y se empaqueta en el instalador con extraResources; permite instalar con un clic incluso sin conexión.
+      - name: Descargar el runtime de VC++ (incluido sin conexión)
         shell: pwsh
         run: |
           $dir = "build\runtime"
           if (-not (Test-Path $dir)) { New-Item -ItemType Directory -Force -Path $dir | Out-Null }
           $out = "$dir\vc_redist.x64.exe"
-          Write-Output "下载 VC++ 2015-2022 x64 运行库…"
+          Write-Output "Descargando el runtime de VC++ 2015-2022 x64…"
           curl.exe -L -o $out "https://aka.ms/vs/17/release/vc_redist.x64.exe"
-          if (-not (Test-Path $out) -or (Get-Item $out).Length -lt 1MB) { Write-Error "vc_redist 下载失败" }
+          if (-not (Test-Path $out) -or (Get-Item $out).Length -lt 1MB) { Write-Error "Fallo al descargar vc_redist" }
           Get-Item $out | Select-Object Name, Length
 
-      # 不打 git tag 时 electron-builder 不会隐式发布；打了 tag 也会因为本 job 没有
-      # GH_TOKEN 而报 "GitHub Personal Access Token is not set" 后退出 1（之前完整版一直失败的根因）。
-      # 这里显式 --publish never，安装包由后面「上传完整版到 Release」步骤用 gh release upload 上传。
-      - name: 构建完整版安装包
+      # Sin etiqueta git, electron-builder no publica de forma implícita; con etiqueta, este job falla de todos modos porque
+      # no tiene GH_TOKEN y sale con "GitHub Personal Access Token is not set" y código 1 (la causa de que la versión completa fallara siempre).
+      # Aquí se usa --publish never de forma explícita; el instalador lo sube después el paso «Subir la versión completa a Release» con gh release upload.
+      - name: Compilar el instalador de la versión completa
         run: npx electron-builder --win nsis --publish never
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
 
-      - name: 上传完整版到 Release
+      - name: Subir la versión completa a Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         shell: pwsh
@@ -169,43 +170,44 @@ jobs:
           $tag = "${{ github.ref_name }}"
           if (-not $tag.StartsWith('v')) { $tag = "v$tag" }
           $setup = Get-ChildItem dist/release/*Setup.exe | Select-Object -First 1
-          if (-not $setup) { Write-Error "未找到 Setup.exe"; exit 1 }
-          Write-Output ("上传 {0} ({1:N0} MB)" -f $setup.Name, ($setup.Length / 1MB))
+          if (-not $setup) { Write-Error "No se encontró Setup.exe"; exit 1 }
+          Write-Output ("Subiendo {0} ({1:N0} MB)" -f $setup.Name, ($setup.Length / 1MB))
           $ok = $false
           for ($i = 1; $i -le 3 -and -not $ok; $i++) {
             gh release upload $tag $setup.FullName --clobber
             if ($LASTEXITCODE -eq 0) { $ok = $true } else { Start-Sleep -Seconds 20 }
           }
-          if (-not $ok) { Write-Error "上传失败: $($setup.Name)"; exit 1 }
+          if (-not $ok) { Write-Error "Fallo al subir: $($setup.Name)"; exit 1 }
           gh release view $tag --json assets --jq '.assets[] | "\(.name) \(.size)"'
 
-      # 轻量版（不带运行时）不再去 dl.google.com 逐个下 emulator / 系统镜像，
-      # 而是直接下这一个整包 —— 下载源与「软件更新」同为本项目 GitHub Release，
-      # 国内网络稳定性、出问题后的排障都只在一个地方。
-      # 内容已经是 .xz 压缩过的镜像，这里用 bsdtar 直接打 zip（不再二次压缩，省几十分钟）。
-      - name: 打包运行时整包（轻量版下载源）
+      # La versión ligera (sin runtime) ya no descarga emulator / imágenes del sistema una a una desde dl.google.com,
+      # sino directamente este único paquete íntegro: la fuente de descarga y «actualizaciones de software» coinciden
+      # en el mismo Release de GitHub del proyecto, de modo que la estabilidad de la red en China y la resolución
+      # de incidencias se concentran en un solo lugar.
+      # El contenido ya son imágenes comprimidas con .xz; aquí se usa bsdtar para crear el zip directamente (sin comprimir dos veces, ahorrando decenas de minutos).
+      - name: Empaquetar el runtime íntegro (fuente de descarga de la versión ligera)
         shell: pwsh
         run: |
           $tag = "${{ github.ref_name }}"
           if (-not $tag.StartsWith('v')) { $tag = "v$tag" }
-          $zip = "ApkStart-runtime-$tag.zip"
-          if (-not (Test-Path "build\runtime\emulator\emulator.exe")) { Write-Error "build\runtime 不完整"; exit 1 }
+          $zip = "ApkBuddyStart-runtime-$tag.zip"
+          if (-not (Test-Path "build\runtime\emulator\emulator.exe")) { Write-Error "build\runtime está incompleto"; exit 1 }
           tar.exe -a -cf $zip -C "build\runtime" .
-          if ($LASTEXITCODE -ne 0) { Write-Error "打包运行时失败"; exit 1 }
+          if ($LASTEXITCODE -ne 0) { Write-Error "Falló al empaquetar el runtime"; exit 1 }
           Get-Item $zip | Select-Object Name, @{n='MB';e={[math]::Round($_.Length/1MB,1)}}
 
-      - name: 上传运行时整包到 Release
+      - name: Subir el runtime íntegro a Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         shell: pwsh
         run: |
           $tag = "${{ github.ref_name }}"
           if (-not $tag.StartsWith('v')) { $tag = "v$tag" }
-          $zip = "ApkStart-runtime-$tag.zip"
+          $zip = "ApkBuddyStart-runtime-$tag.zip"
           $ok = $false
           for ($i = 1; $i -le 3 -and -not $ok; $i++) {
             gh release upload $tag $zip --clobber
             if ($LASTEXITCODE -eq 0) { $ok = $true } else { Start-Sleep -Seconds 20 }
           }
-          if (-not $ok) { Write-Error "上传失败: $zip"; exit 1 }
+          if (-not $ok) { Write-Error "Fallo al subir: $zip"; exit 1 }
           gh release view $tag --json assets --jq '.assets[] | "\(.name) \(.size)"'

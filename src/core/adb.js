@@ -46,7 +46,7 @@ function friendlyInstallError(raw) {
   const table = {
     INSTALL_FAILED_NO_MATCHING_ABIS:
       'Error de instalación: esta aplicación solo incluye bibliotecas nativas ARM (es lo habitual en muchas apps chinas),\n            '
-      + 'La imagen actual no incluye una capa de traducción ARM. ApkStart cambiará automáticamente a una imagen compatible con la nueva capa integrada y lo reintentará.',
+      + 'La imagen actual no incluye una capa de traducción ARM. ApkBuddyStart cambiará automáticamente a una imagen compatible con la nueva capa integrada y lo reintentará.',
     INSTALL_FAILED_OLDER_SDK:
       'Error de instalación: la aplicación requiere una versión de Android superior a la del entorno actual (se necesita una imagen de sistema más reciente).',
     INSTALL_PARSE_FAILED_NO_CERTIFICATES:
@@ -64,7 +64,7 @@ function friendlyInstallError(raw) {
     INSTALL_FAILED_UPDATE_INCOMPATIBLE: 'Error de instalación: la firma no coincide con la versión instalada; desinstala primero la anterior.',
     INSTALL_FAILED_DEPRECATED_SDK_VERSION:
       'Error de instalación: la aplicación apunta a una versión muy antigua de Android (targetSdk demasiado bajo); Android 14 bloquea la instalación por defecto.'
-      + 'ApkStart reintentará automáticamente con el parámetro de omisión oficial.',
+      + 'ApkBuddyStart reintentará automáticamente con el parámetro de omisión oficial.',
     INSTALL_FAILED_TEST_ONLY: 'Error de instalación: es un paquete de solo pruebas; se ha añadido automáticamente el parámetro de test y se ha reintentado.',
     INSTALL_FAILED_MISSING_SHARED_LIBRARY: 'Error de instalación: la aplicación depende de características del dispositivo (como bibliotecas de un fabricante) ausentes en este entorno.',
     INSTALL_FAILED_USER_RESTRICTION: 'Error de instalación: el sistema bloqueó la instalación; reinicia el entorno e inténtalo de nuevo.',
@@ -80,7 +80,7 @@ function friendlyLaunchError(raw, pkg) {
   const t = String(raw || '');
   if (/DoBadTrampoline|libndk_translation|houdini|SIGABRT.*arm/i.test(t)) {
     return `${pkg || 'Aplicación'} Se cierra tras iniciar: la capa de traducción ARM no es compatible con el manejo de señales de esta aplicación.`
-      + 'ApkStart cambiará automáticamente a la imagen compatible con Android 14 y lo reintentará.';
+      + 'ApkBuddyStart cambiará automáticamente a la imagen compatible con Android 14 y lo reintentará.';
   }
   if (/UnsatisfiedLinkError|dlopen failed|couldn't find "lib|\.so.*not found/i.test(t)) {
     return `${pkg || 'Aplicación'} Se cierra tras iniciar: faltan bibliotecas nativas del dispositivo (la aplicación podría ofrecer solo versión ARM).`

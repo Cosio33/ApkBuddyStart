@@ -1,4 +1,4 @@
-# ApkStart process priority helper (ASCII only).
+# ApkBuddyStart process priority helper (ASCII only).
 # QEMU is a CPU-hungry guest. Running it at Normal priority competes with the
 # Windows shell, the pointer and every foreground app -- which is exactly what
 # makes the whole desktop feel laggy while an Android app is open.

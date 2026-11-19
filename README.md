@@ -4,7 +4,7 @@
 
 Instalas un `.apk` con doble clic y la aplicación se abre en **su propia ventana**, con **su propio icono en el escritorio y en la barra de tareas**. Todo el entorno Android viene integrado: no necesitas WSA, ni instalar un emulador aparte, ni configurar ADB.
 
-> **ApkBuddyStart** es un proyecto derivado de [ApkStart](https://github.com/RoutineMiku/apkstart) de RoutineMiku (licencia MIT), reescrito con la interfaz 100 % en español. El motor —emulación QEMU, ADB y aprovisionamiento— se conserva; la capa de interfaz se reescribió desde cero con textos nativos en español, sin traducción en tiempo de ejecución.
+> **ApkBuddyStart** es un proyecto derivado de [ApkBuddyStart](https://github.com/RoutineMiku/apkstart) de RoutineMiku (licencia MIT), reescrito con la interfaz 100 % en español. El motor —emulación QEMU, ADB y aprovisionamiento— se conserva; la capa de interfaz se reescribió desde cero con textos nativos en español, sin traducción en tiempo de ejecución.
 
 ## ¿Qué hace?
 
@@ -71,4 +71,4 @@ El selector **«Idioma del sistema»** en Ajustes cambia el idioma del **Android
 
 ## Licencia
 
-MIT. Proyecto derivado de ApkStart, de RoutineMiku, también bajo licencia MIT.
+MIT. Proyecto derivado de ApkBuddyStart, de RoutineMiku, también bajo licencia MIT.

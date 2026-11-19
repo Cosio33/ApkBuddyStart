@@ -93,7 +93,7 @@ const { AdbClient, friendlyInstallError, friendlyLaunchError } = require('../src
 
   await test('镜像换盘不算换镜像：sysdir 换了目录不该清用户数据', () => {
     const c = 'C:/Users/x/AppData/Roaming/apkstart/system-images/android-34/google_apis_playstore/x86_64/';
-    const d = 'D:/ApkStartRuntime/system-images/android-34/google_apis_playstore/x86_64/';
+    const d = 'D:/ApkBuddyStartRuntime/system-images/android-34/google_apis_playstore/x86_64/';
     assert(doctor.imageIdentity(c) === doctor.imageIdentity(d), '同一套镜像的路径身份必须相同');
     const key = (p) => doctor.snapshotKey({ emulatorVersion: '37.3.8', api: '34', tag: 'google_apis_playstore' }, p);
     assert(key(c) === key(d), '换盘后快照不该作废（否则白等一次冷启动）');
@@ -960,12 +960,12 @@ const { AdbClient, friendlyInstallError, friendlyLaunchError } = require('../src
   await test('只有一个运行时：注册表固定 builtin，装了什么模拟器都不影响', () => {
     const backends = require('../src/core/backends');
     // 0.5.6 起不再有自动挑选：不管本机装了 MuMu / 雷电 / 蓝叠 / WSA，
-    // 都只跑 ApkStart 自己的运行时，只按设置读也不会有第二个候选。
+    // 都只跑 ApkBuddyStart 自己的运行时，只按设置读也不会有第二个候选。
     assert(backends.REGISTRY.length === 1, '注册表里出现了第二个底座');
     assert(backends.REGISTRY[0].id === 'builtin', '唯一底座不是 builtin');
   });
 
-  await test('窗口标题改 ApkStart：识别逻辑必须同时认新标题', () => {
+  await test('窗口标题改 ApkBuddyStart：识别逻辑必须同时认新标题', () => {
     const root = path.join(__dirname, '..');
     const ps1 = fs.readFileSync(path.join(root, 'src', 'core', 'win', 'agent.ps1'), 'utf8');
     const agent = fs.readFileSync(path.join(root, 'src', 'core', 'agent.js'), 'utf8');
@@ -1058,7 +1058,7 @@ const { AdbClient, friendlyInstallError, friendlyLaunchError } = require('../src
     try {
       shortcut.writeDesktopEntry({
         shortcutPath: out,
-        target: '/opt/ApkStart/ApkStart',
+        target: '/opt/ApkBuddyStart/ApkBuddyStart',
         args: '--launch "com.example.app"',
         iconPngPath: png,
         description: '测试应用',
@@ -1068,7 +1068,7 @@ const { AdbClient, friendlyInstallError, friendlyLaunchError } = require('../src
       assert(/\[Desktop Entry\]/.test(body), '缺 Desktop Entry 段');
       assert(/^Type=Application$/m.test(body), 'Type 必须是 Application');
       // 带空格的路径不加引号会被拆成两个参数，直接启动失败
-      assert(/^Exec=.*"\/opt\/ApkStart\/ApkStart"/m.test(body), 'Exec 里的目标路径要加引号');
+      assert(/^Exec=.*"\/opt\/ApkBuddyStart\/ApkBuddyStart"/m.test(body), 'Exec 里的目标路径要加引号');
       assert(/com\.example\.app/.test(body), 'Exec 要带上 --launch 的包名');
       assert(/^Icon=.*icon\.png$/m.test(body), '图标要用 PNG 绝对路径（ICO 在 Linux 无效）');
       // .desktop 不带执行位，很多桌面环境会当普通文档
@@ -1141,22 +1141,22 @@ const { AdbClient, friendlyInstallError, friendlyLaunchError } = require('../src
       'onCloseApp 也要清 currentAppPkg');
   });
 
-  await test('旧版本清理：能发现任意位置的 ApkStart 目录，且绝不碰当前运行版本', () => {
+  await test('旧版本清理：能发现任意位置的 ApkBuddyStart 目录，且绝不碰当前运行版本', () => {
     const os = require('os');
     const leftovers = require('../src/core/leftovers');
     const np = (p) => { try { return path.resolve(p).toLowerCase(); } catch (_) { return String(p).toLowerCase(); } };
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'apkstart-left-'));
     try {
-      // 造三个「旧版本」目录 + 一个「当前版本」目录，每个里面放一个假的 ApkStart.exe
+      // 造三个「旧版本」目录 + 一个「当前版本」目录，每个里面放一个假的 ApkBuddyStart.exe
       const mk = (name) => {
         const d = path.join(root, name);
         fs.mkdirSync(d, { recursive: true });
-        fs.writeFileSync(path.join(d, 'ApkStart.exe'), 'fake-exe');
+        fs.writeFileSync(path.join(d, 'ApkBuddyStart.exe'), 'fake-exe');
         return d;
       };
-      const old1 = mk('ApkStart-v0.3.9-win64-portable');
-      const old2 = mk('ApkStart-win64-portable.prev-2026-01-01T00-00-00-000Z'); // 打包备份残留
-      const curDir = mk('ApkStart-v0.5.0-win64-portable');
+      const old1 = mk('ApkBuddyStart-v0.3.9-win64-portable');
+      const old2 = mk('ApkBuddyStart-win64-portable.prev-2026-01-01T00-00-00-000Z'); // 打包备份残留
+      const curDir = mk('ApkBuddyStart-v0.5.0-win64-portable');
 
       const r = leftovers.scan({ installDir: curDir, dataDir: root, avdHome: '' });
       const found = r.items.filter((i) => i.kind === 'dir').map((i) => np(i.path));
@@ -1465,39 +1465,39 @@ const { AdbClient, friendlyInstallError, friendlyLaunchError } = require('../src
     const { Updater } = require('../src/core/updater');
     const dir = path.join(TMP, 'upd-setup');
     fs.mkdirSync(dir, { recursive: true });
-    const exe = path.join(dir, 'ApkStart.exe');
+    const exe = path.join(dir, 'ApkBuddyStart.exe');
     fs.writeFileSync(exe, 'x');
     const portable = new Updater({ currentVersion: '0.1.0', exePath: exe, isPackaged: true, dataDir: TMP });
     assert(portable.flavor === 'portable', '没有卸载器时判定为便携版');
-    fs.writeFileSync(path.join(dir, 'Uninstall ApkStart.exe'), 'x');
+    fs.writeFileSync(path.join(dir, 'Uninstall ApkBuddyStart.exe'), 'x');
     assert(portable.flavor === 'setup', '有卸载器时判定为安装版');
     // 资产挑选是纯函数式的，这里直接喂一个假的 check 结果验证兜底命名规则
-    assert(/Setup\.exe$/i.test('ApkStart-0.3.2-Setup.exe'), '安装版资产名匹配');
-    assert(/portable.*\.zip$/i.test('ApkStart-v0.3.2-win64-portable.zip'), '便携版资产名匹配');
+    assert(/Setup\.exe$/i.test('ApkBuddyStart-0.3.2-Setup.exe'), '安装版资产名匹配');
+    assert(/portable.*\.zip$/i.test('ApkBuddyStart-v0.3.2-win64-portable.zip'), '便携版资产名匹配');
   });
 
-  await test('便携版不会把运行时整包（ApkStart-runtime-*.zip）当成更新包', async () => {
+  await test('便携版不会把运行时整包（ApkBuddyStart-runtime-*.zip）当成更新包', async () => {
     const { Updater } = require('../src/core/updater');
     const dir = path.join(TMP, 'upd-asset');
     fs.mkdirSync(dir, { recursive: true });
-    const exe = path.join(dir, 'ApkStart.exe');
+    const exe = path.join(dir, 'ApkBuddyStart.exe');
     fs.writeFileSync(exe, 'x');
     const mk = (assets) => ({
-      version: '0.5.0', tag: 'v0.5.0', name: 'ApkStart v0.5.0', notes: '', htmlUrl: '',
+      version: '0.5.0', tag: 'v0.5.0', name: 'ApkBuddyStart v0.5.0', notes: '', htmlUrl: '',
       publishedAt: '', sources: [], unreachable: [], assets,
     });
     const u = new Updater({ currentVersion: '0.3.4', exePath: exe, isPackaged: true, dataDir: dir });
     // 两个资产同时存在 → 必须挑便携包
     u.sources = { latest: async () => mk([
-      { name: 'ApkStart-runtime-v0.5.0.zip', url: 'https://x/runtime.zip', urls: ['https://x/runtime.zip'], sizes: {} },
-      { name: 'ApkStart-v0.5.0-win64-portable.zip', url: 'https://x/p.zip', urls: ['https://x/p.zip'], sizes: {} },
+      { name: 'ApkBuddyStart-runtime-v0.5.0.zip', url: 'https://x/runtime.zip', urls: ['https://x/runtime.zip'], sizes: {} },
+      { name: 'ApkBuddyStart-v0.5.0-win64-portable.zip', url: 'https://x/p.zip', urls: ['https://x/p.zip'], sizes: {} },
     ]) };
     let info = await u.check({ force: true });
     assert(/portable/.test(info.asset.name), `应挑便携包，实际 ${info.asset.name}`);
 
     // 只有运行时整包（便携包没传上去）→ 宁可不自动更新，也不能拿 1.5GB 运行时当程序包
     u.sources = { latest: async () => mk([
-      { name: 'ApkStart-runtime-v0.5.0.zip', url: 'https://x/runtime.zip', urls: ['https://x/runtime.zip'], sizes: {} },
+      { name: 'ApkBuddyStart-runtime-v0.5.0.zip', url: 'https://x/runtime.zip', urls: ['https://x/runtime.zip'], sizes: {} },
     ]) };
     info = await u.check({ force: true });
     assert(!info.asset, '只有运行时整包时不应挑出更新资产');
@@ -1552,14 +1552,14 @@ const { AdbClient, friendlyInstallError, friendlyLaunchError } = require('../src
           assets: [
             { name: 'v0.3.2.zip', size: 999, browser_download_url: 'ge://src' },
             { name: 'v0.3.2.tar.gz', size: 999, browser_download_url: 'ge://src2' },
-            { name: 'ApkStart-v0.3.2-win64-portable.zip', size: 10, browser_download_url: 'ge://ok' },
+            { name: 'ApkBuddyStart-v0.3.2-win64-portable.zip', size: 10, browser_download_url: 'ge://ok' },
           ],
         },
       },
     ];
     const m = await s2.latest();
     assert(m.assets.length === 1 && m.assets[0].url === 'ge://ok',
-      `只应保留 ApkStart* 资产，实际 ${JSON.stringify(m.assets.map((a) => a.name))}`);
+      `只应保留 ApkBuddyStart* 资产，实际 ${JSON.stringify(m.assets.map((a) => a.name))}`);
   });
 
   await test('Gitee 的资产没有 size 字段：分片组仍要成立（否则整包被丢掉）', async () => {
@@ -1573,15 +1573,15 @@ const { AdbClient, friendlyInstallError, friendlyLaunchError } = require('../src
         tag_name: 'v0.3.3',
         // Gitee 发行版资产只有 name + url，没有 size（实测）
         assets: [
-          { name: 'ApkStart-v0.3.3-win64-portable.zip.part1', browser_download_url: 'ge://p1' },
-          { name: 'ApkStart-v0.3.3-win64-portable.zip.part2', browser_download_url: 'ge://p2' },
+          { name: 'ApkBuddyStart-v0.3.3-win64-portable.zip.part1', browser_download_url: 'ge://p1' },
+          { name: 'ApkBuddyStart-v0.3.3-win64-portable.zip.part2', browser_download_url: 'ge://p2' },
         ],
       },
     }];
     const m = await s.latest();
     assert(m.assets.length === 1, `应合并成 1 个资产，实际 ${m.assets.length}`);
     const a = m.assets[0];
-    assert(a.name === 'ApkStart-v0.3.3-win64-portable.zip', `资产名应为整包名，实际 ${a.name}`);
+    assert(a.name === 'ApkBuddyStart-v0.3.3-win64-portable.zip', `资产名应为整包名，实际 ${a.name}`);
     assert(a.parts && a.parts.length === 2, '必须保留两片');
     assert(a.parts[0].urls[0] === 'ge://p1' && a.parts[1].urls[0] === 'ge://p2', '分片地址顺序/内容要对');
     assert(a.size === 0, '大小未知时应为 0（界面按已收字节显示进度）');
@@ -1597,7 +1597,7 @@ const { AdbClient, friendlyInstallError, friendlyLaunchError } = require('../src
       version: '9.9.9',
       tag: 'v9.9.9',
       assets: [{
-        name: 'ApkStart-v9.9.9-win64-portable.zip',
+        name: 'ApkBuddyStart-v9.9.9-win64-portable.zip',
         size: 0,
         partial: true,
         parts: [{ index: 1, size: 0, urls: ['https://gitee.com/x/p1'] }, { index: 2, size: 0, urls: ['https://gitee.com/x/p2'] }],
@@ -1614,8 +1614,8 @@ const { AdbClient, friendlyInstallError, friendlyLaunchError } = require('../src
     const { Sources } = require('../src/core/sources');
     const s = new Sources(() => ({ runtime: {} }));
     s.fetchReleases = async () => [
-      { source: 'github', name: 'GitHub', web: 'g', rel: { tag_name: 'v0.4.0', assets: [{ name: 'ApkStart-A-portable.zip', size: 10, browser_download_url: 'gh://a' }] } },
-      { source: 'gitee', name: 'Gitee', web: 'e', rel: { tag_name: 'v0.3.9', assets: [{ name: 'ApkStart-A-portable.zip', size: 10, browser_download_url: 'ge://a' }, { name: 'ApkStart-B.txt', size: 1, browser_download_url: 'ge://b' }] } },
+      { source: 'github', name: 'GitHub', web: 'g', rel: { tag_name: 'v0.4.0', assets: [{ name: 'ApkBuddyStart-A-portable.zip', size: 10, browser_download_url: 'gh://a' }] } },
+      { source: 'gitee', name: 'Gitee', web: 'e', rel: { tag_name: 'v0.3.9', assets: [{ name: 'ApkBuddyStart-A-portable.zip', size: 10, browser_download_url: 'ge://a' }, { name: 'ApkBuddyStart-B.txt', size: 1, browser_download_url: 'ge://b' }] } },
     ];
     const m = await s.latest();
     assert(m.version === '0.4.0', `应取更高版本，实际 ${m.version}`);
@@ -1643,9 +1643,9 @@ const { AdbClient, friendlyInstallError, friendlyLaunchError } = require('../src
     const gh = 'https://github.com/o/r/releases/download/v0.3.3/a.zip';
     const ge = 'https://gitee.com/o/r/releases/download/v0.3.3/a.zip';
     s.fetchReleases = async () => [
-      { source: 'github', name: 'GitHub', web: 'g', rel: { tag_name: 'v0.3.3', assets: [{ name: 'ApkStart-v0.3.3-win64-portable.zip', size: 108200693, browser_download_url: gh }] } },
+      { source: 'github', name: 'GitHub', web: 'g', rel: { tag_name: 'v0.3.3', assets: [{ name: 'ApkBuddyStart-v0.3.3-win64-portable.zip', size: 108200693, browser_download_url: gh }] } },
       // Gitee 的资产没有 size（实测），不能拿 GitHub 的大小冒充它
-      { source: 'gitee', name: 'Gitee', web: 'e', rel: { tag_name: 'v0.3.3', assets: [{ name: 'ApkStart-v0.3.3-win64-portable.zip', browser_download_url: ge }] } },
+      { source: 'gitee', name: 'Gitee', web: 'e', rel: { tag_name: 'v0.3.3', assets: [{ name: 'ApkBuddyStart-v0.3.3-win64-portable.zip', browser_download_url: ge }] } },
     ];
     const m = await s.latest();
     assert(m.assets.length === 1, `同名资产要合并成 1 个，实际 ${m.assets.length}`);
@@ -2514,7 +2514,7 @@ const { AdbClient, friendlyInstallError, friendlyLaunchError } = require('../src
     assert(/setAumid\(APP_AUMID\);/.test(mainJs), '启动时要设置 AppUserModelID');
 
     // 完整版（含运行时）作为一个可交付版本
-    assert(/--full/.test(packJs) && /ApkStart-v\$\{PKG\.version\}-win64-full/.test(packJs),
+    assert(/--full/.test(packJs) && /ApkBuddyStart-v\$\{PKG\.version\}-win64-full/.test(packJs),
       '--full 要产出带版本号的完整版目录');
     assert(/build', 'runtime'/.test(packJs), '完整版要内置 build/runtime');
   });
@@ -2525,7 +2525,7 @@ const { AdbClient, friendlyInstallError, friendlyLaunchError } = require('../src
     const { msixVersion } = require(path.join(root, 'build', 'msix.js'));
     const four = msixVersion(pkg.version);
     assert(/^\d+\.\d+\.\d+\.0$/.test(four), `MSIX 四段版本号格式不对：${four}`);
-    const artifact = `ApkStart_${four}_x64.msix`;
+    const artifact = `ApkBuddyStart_${four}_x64.msix`;
     for (const f of ['docs/store-listing.md', 'docs/store-msix.md', 'docs/store-upload-walkthrough.md']) {
       const t = fs.readFileSync(path.join(root, f), 'utf8');
       assert(t.includes(artifact), `${f} 里应引用当前版本的包名 ${artifact}`);
@@ -2544,20 +2544,20 @@ const { AdbClient, friendlyInstallError, friendlyLaunchError } = require('../src
     const mainJs = fs.readFileSync(path.join(root, 'src', 'main.js'), 'utf8');
     const shortcutJs = fs.readFileSync(path.join(root, 'src', 'core', 'shortcut.js'), 'utf8');
 
-    // 桌面/开始菜单快捷方式的图标 = 从 APK 里解出来的 <包名>.ico，绝不是 ApkStart 的品牌图
+    // 桌面/开始菜单快捷方式的图标 = 从 APK 里解出来的 <包名>.ico，绝不是 ApkBuddyStart 的品牌图
     assert(/const ico = app\.icoPath && fs\.existsSync\(app\.icoPath\) \? app\.icoPath : undefined;/.test(installerJs),
       '要用应用自己的 icoPath');
     assert(/iconIcoPath: ico/.test(installerJs), 'writeShortcut 要拿到应用图标');
-    assert(!/iconIcoPath:\s*(APPICON|appicon|brandIcon)/.test(installerJs), '不能用 ApkStart 的品牌图标');
+    assert(!/iconIcoPath:\s*(APPICON|appicon|brandIcon)/.test(installerJs), '不能用 ApkBuddyStart 的品牌图标');
     // 每个应用一个 AUMID：任务栏按应用分组，固定项才认得出是哪个应用
-    assert(/appUserModelId: `RoutineMiku\.ApkStart\.\$\{app\.package\}`/.test(installerJs),
+    assert(/appUserModelId: `RoutineMiku\.ApkBuddyStart\.\$\{app\.package\}`/.test(installerJs),
       '每个应用要有自己的 AUMID');
     // Windows 只在「进程 AUMID == 快捷方式 AUMID」时沿用快捷方式图标，
-    // 所以打开某个应用时要把进程身份切过去，回管理窗口再切回 ApkStart。
-    assert(/const APP_AUMID = 'RoutineMiku\.ApkStart';/.test(mainJs), '要有统一的 AUMID 前缀');
+    // 所以打开某个应用时要把进程身份切过去，回管理窗口再切回 ApkBuddyStart。
+    assert(/const APP_AUMID = 'RoutineMiku\.ApkBuddyStart';/.test(mainJs), '要有统一的 AUMID 前缀');
     assert(/setAumid\(`\$\{APP_AUMID\}\.\$\{pkg\}`\)/.test(mainJs), '开应用窗口前要切到该应用的 AUMID');
     assert(/function showWindow\(\) \{\s*\n\s*\/\/[^\n]*\n\s*setAumid\(APP_AUMID\);/.test(mainJs),
-      '回管理窗口要切回 ApkStart 的 AUMID');
+      '回管理窗口要切回 ApkBuddyStart 的 AUMID');
     // writeShortcut 必须把 iconIndex 设成 0（ico 里第 0 帧），否则某些尺寸会取错
     assert(/icon: opt\.iconIcoPath \|\| opt\.target/.test(shortcutJs), '图标路径要能回退到 target');
     assert(/iconIndex: 0/.test(shortcutJs), 'iconIndex 要是 0');

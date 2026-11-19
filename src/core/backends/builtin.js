@@ -2,8 +2,8 @@
 /**
  * 底座：自带的 Google Android Emulator（QEMU 全系统虚拟化）
  *
- * 这是 ApkStart 的默认底座，也是唯一「完全自持」的底座：
- * adb / emulator / 系统镜像都由 ApkStart 自己下载和管理，不依赖用户机器上
+ * 这是 ApkBuddyStart 的默认底座，也是唯一「完全自持」的底座：
+ * adb / emulator / 系统镜像都由 ApkBuddyStart 自己下载和管理，不依赖用户机器上
  * 已经装了什么模拟器。
  *
  * 真正的实现在 core/engine.js（Runtime）与 core/emulator.js（EmulatorEngine）里，

@@ -1,61 +1,53 @@
-# ApkStart v0.3.6
+# ApkBuddyStart v0.3.6
 
-> 一句话：**修好了「红果点『同意并继续』后一直黑屏」**。真因是安卓虚拟机的 Wi-Fi 迟迟连不上、应用在没网时就加载首页，页面上只剩一块黑底 —— 和显卡、渲染后端无关。
+> En una frase: **arreglado el «Hongguo se queda en pantalla negra tras pulsar «Aceptar y continuar»»**. La causa real era que el Wi-Fi de la máquina virtual Android tardaba demasiado en conectarse y la aplicación cargaba la portada sin red, dejando solo un fondo negro. No tiene nada que ver con la GPU ni con el backend de renderizado.
 
-## 一、红果点「同意」后黑屏 —— 真因与修复
+## 1. Pantalla negra al pulsar «Aceptar» en Hongguo: causa real y solución
 
-### 上一版的误判
+### El diagnóstico erróneo de la versión anterior
 
-v0.3.5 把黑屏归因到 GPU 后端（swangle / software），是**错的**。换后端当然没用。
+La v0.3.5 atribuía la pantalla negra al backend GPU (swangle / software); estaba **equivocada**. Cambiar de backend, por supuesto, no servía de nada.
 
-### 这次实测定位到的真因
+### La causa real localizada con pruebas en esta versión
 
-用 adb 逐层查下来：
+Investigando capa por capa con adb:
 
-- `cmd wifi status`：`Wifi is not connected`；`ip -o addr show wlan0`：**没有任何 IP**；
-- 也就是说**虚拟机当时没有网络**；
-- 红果的隐私弹窗是本地页面，所以正常显示；点「同意并继续」之后要拉首页数据，
-  拿不到数据就渲染成一整块黑底 —— 用户看到的就是「点同意后黑屏」；
-- 而 `sys.boot_completed` 只代表系统起来了，**Wi-Fi 关联 + DHCP 往往还要再等几十秒到两分多钟**。
-  应用启动得比网络就绪早，首页请求全部失败，页面就一直黑着。
+- `cmd wifi status`: `Wifi is not connected`; `ip -o addr show wlan0`: **ninguna dirección IP**;
+- es decir, **la máquina virtual no tenía red en ese momento**;
+- el diálogo de privacidad de Hongguo es una página local, por lo que se muestra con normalidad; al pulsar «Aceptar y continuar» necesita cargar los datos de la portada; si no los consigue, los renderiza como un bloque negro entero: eso es lo que el usuario ve como «pantalla negra tras pulsar aceptar»;
+- y `sys.boot_completed` solo significa que el sistema ha arrancado; **la asociación del Wi-Fi + DHCP suelen llevar varias decenas de segundos hasta más de dos minutos**.
+  La aplicación arranca antes de que la red esté lista, todas las peticiones de la portada fallan y la página se queda negra.
 
-实测证据：同一个虚拟机，开机后立刻查是「无 IP」，等一两分钟后再查就变成
-`wlan0 inet 10.0.2.16/24` + `Wifi is connected to "AndroidWifi"`，此时红果首页完全正常。
+Prueba real: en la misma máquina virtual, consultar justo después del arranque da «sin IP», y consultar uno o dos minutos después da
+`wlan0 inet 10.0.2.16/24` y `Wifi is connected to "AndroidWifi"`; en ese momento la portada de Hongguo funciona perfectamente.
 
-### 本版修复
+### Correcciones de esta versión
 
-1. **拉起应用前先等网络就绪**：`installer.launch` 会在 `am start` 之前最多等 150 秒，
-   日志里会打 `正在等待安卓虚拟机联网… Ns`，就绪后才真正启动应用 —— 从根上避免
-   「应用比网络先跑起来」导致的黑屏。
-2. **启动后网络体检**：开机成功就检查虚拟机有没有拿到 IP，没网时日志里明确写出原因，
-   不再让用户对着黑屏猜。
-3. **设置 → 修复网络**（新按钮）：一键修复。做法是重置安卓用户数据并重新开机，
-   然后一直等到网络就绪（最长 4 分钟），成功后再把「网络正常」的状态存成快速启动快照。
-   - **应用清单会保留**，点开应用会自动重装，不用手动重装 APK；
-   - 应用内的登录态、追剧记录等运行时数据会丢失，需要重新登录；
-   - 只影响当前 AVD，系统镜像和本机 APK 缓存都不动。
+1. **Esperar a que la red esté lista antes de lanzar la aplicación**: `installer.launch` espera hasta 150 s antes de `am start`, y registra en el registro `esperando a que la máquina virtual Android se conecte a la red… N s`; solo cuando está lista lanza realmente la aplicación, evitando de raíz la pantalla negra causada por «la aplicación arranca antes que la red».
+2. **Revisión de red tras el arranque**: en cuanto el arranque termina correctamente, se comprueba si la máquina virtual ha obtenido una IP; sin red, el registro indica la causa explícitamente y el usuario ya no tiene que adivinar frente a una pantalla negra.
+3. **Ajustes → Reparar red** (botón nuevo): reparación con un clic. Consiste en restablecer los datos de usuario de Android y reiniciar, y esperar entonces hasta que la red esté lista (máximo 4 minutos); si funciona, se guarda el estado «red correcta» como instantánea de arranque rápido.
+   - **La lista de aplicaciones se conserva**: al abrir una aplicación se reinstala automáticamente, sin necesidad de reinstalar el APK a mano;
+   - Se pierden los datos de runtime propios de la aplicación, como la sesión de inicio y el historial de series, por lo que hay que volver a iniciar sesión;
+   - Solo afecta al AVD actual; no se tocan la imagen del sistema ni la caché de APK locales.
 
-> 红果现在黑屏的话：先直接点开红果试试（本版会自动等网络）；仍黑再点「设置 → 修复网络」。
+> Si Hongguo sigue en pantalla negra: primero abre Hongguo directamente (esta versión espera automáticamente a la red); si sigue negra, pulsa «Ajustes → Reparar red».
 
-## 二、上一版「清理缓存」修复继续生效
+## 2. Sigue en vigor la corrección de «limpiar caché» de la versión anterior
 
-v0.3.5 的 `includeSnapshots` + 「重置安卓数据」未改动，继续可用。
+No se han cambiado `includeSnapshots` ni «restablecer datos de Android» de la v0.3.5; siguen funcionando.
 
-## 三、已知限制
+## 3. Limitaciones conocidas
 
-- 该 Android 14（`google_apis_playstore`）镜像存在上游问题：在**已有用户数据**上冷启动时，
-  Wi-Fi 经常一直 `NO-CARRIER`、拿不到 IP；重置数据后的那次开机则能正常连上。
-  因此「修复网络」会重置数据，并立刻存快照来保住可用状态。
-- Play Store 镜像不允许 `adb root`，无法单独删掉坏掉的 Wi-Fi 配置。
+- Esta imagen de Android 14 (`google_apis_playstore`) tiene un problema de la versión original: al arrancar en frío **con datos de usuario ya existentes**, el Wi-Fi suele quedarse en `NO-CARRIER` y no consigue IP; en cambio, el arranque justo después de restablecer los datos se conecta con normalidad. Por eso «Reparar red» restablece los datos y guarda enseguida una instantánea para conservar el estado utilizable.
+- La imagen de Play Store no permite `adb root`, así que no se puede borrar por separado la configuración Wi-Fi defectuosa.
 
-## 四、实测记录
+## 4. Registro de pruebas
 
-- 修复后：点「同意并继续」→ 进入 `MainFragmentActivity`，首页正常显示剧集列表与推荐流
-  （截图确认，非黑屏）。
-- 同一虚拟机等待网络就绪后：`wlan0 inet 10.0.2.16/24`、`Wifi is connected to "AndroidWifi"`。
-- `npm test`：**113 项全部通过**（8 + 25 + 80）。
+- Tras la corrección: pulsar «Aceptar y continuar» → entra en `MainFragmentActivity`, y la portada muestra con normalidad la lista de series y el flujo de recomendaciones (confirmado con captura, sin pantalla negra).
+- En la misma máquina virtual, tras esperar a que la red esté lista: `wlan0 inet 10.0.2.16/24`, `Wifi is connected to "AndroidWifi"`.
+- `npm test`: **113 pruebas, todas superadas** (8 + 25 + 80).
 
-## 五、升级方式
+## 5. Cómo actualizar
 
-- 便携版：解压覆盖，数据目录（默认 `%APPDATA%\apkstart`）保持不变。
-- 安装版：直接安装覆盖。
+- Versión portable: descomprime y sobrescribe; el directorio de datos (por defecto `%APPDATA%\apkstart`) se mantiene igual.
+- Versión instalada: instala directamente para sobrescribir.

@@ -1,12 +1,12 @@
 'use strict';
 /**
- * 更新链路自检（不需要真的发布新版本、也不会动到当前安装）。
+ * Autocomprobación de la cadena de actualización (sin publicar una versión nueva ni modificar la instalación actual).
  *
- * 1) 能不能读到 GitHub 最新 release，并对当前形态挑到正确的资产；
- * 2) 版本比较逻辑；
- * 3) 「解压 + 覆盖 + 重启」脚本是真的能跑：造一个假安装目录，让脚本去覆盖它。
+ * 1) Leer el último release de GitHub y elegir el recurso correcto según la forma actual;
+ * 2) Lógica de comparación de versiones;
+ * 3) El script "descomprimir + sobrescribir + reiniciar" funciona de verdad: crear un directorio de instalación falso y dejar que el script lo sobrescriba.
  *
- * 用法: node tools/check-update.js
+ * Uso: node tools/check-update.js
  */
 const fs = require('fs');
 const os = require('os');
@@ -21,61 +21,61 @@ const ok = (c, m) => console.log(`${c ? '✓' : '✗'} ${m}`);
   let pass = true;
   const check = (c, m) => { ok(c, m); if (!c) pass = false; };
 
-  // ---- 1. 版本比较 ----
+  // ---- 1. Comparación de versiones ----
   check(cmpVer('v0.3.2', '0.3.1') === 1, 'v0.3.2 > 0.3.1');
-  check(cmpVer('0.3.1', 'v0.3.1') === 0, 'v 前缀不影响相等');
-  check(cmpVer('v0.10.0', '0.9.9') === 1, '0.10.0 > 0.9.9（按数字比，不是字符串）');
+  check(cmpVer('0.3.1', 'v0.3.1') === 0, 'El prefijo v no afecta la igualdad');
+  check(cmpVer('v0.10.0', '0.9.9') === 1, '0.10.0 > 0.9.9 (se compara numéricamente, no como cadena)');
   check(cmpVer('1.0.0', '1.0.1') === -1, '1.0.0 < 1.0.1');
 
-  // ---- 2. GitHub release ----
+  // ---- 2. Release de GitHub ----
   const sandbox = fs.mkdtempSync(path.join(os.tmpdir(), 'apkstart-upd-'));
   const install = path.join(sandbox, 'install');
   fs.mkdirSync(install, { recursive: true });
 
   const u = new Updater({
     currentVersion: '0.0.0',
-    exePath: path.join(install, 'ApkStart.exe'),
+    exePath: path.join(install, 'ApkBuddyStart.exe'),
     isPackaged: true,
     dataDir: sandbox,
   });
   let info = null;
   try {
     info = await u.check();
-    check(!!info && !!info.version, `读取到最新版本 ${info && info.tag}`);
-    check(info.hasUpdate === true, '当前版本 0.0.0 → 判定有更新');
-    check(!!info.asset && /\.(zip|exe)$/i.test(info.asset.name), `便携形态挑到资产 ${info.asset && info.asset.name}`);
+    check(!!info && !!info.version, `Se leyó la versión más reciente ${info && info.tag}`);
+    check(info.hasUpdate === true, 'Versión actual 0.0.0 → se detecta una actualización');
+    check(!!info.asset && /\.(zip|exe)$/i.test(info.asset.name), `Forma portátil: se eligió el recurso ${info.asset && info.asset.name}`);
   } catch (e) {
-    check(false, `GitHub 检查失败：${e.message}`);
+    check(false, `Falló la comprobación de GitHub: ${e.message}`);
   }
 
-  // 安装形态（有卸载器）应当挑 Setup.exe
-  fs.writeFileSync(path.join(install, 'Uninstall ApkStart.exe'), 'stub');
+  // La forma instalada (con desinstalador) debe elegir Setup.exe
+  fs.writeFileSync(path.join(install, 'Uninstall ApkBuddyStart.exe'), 'stub');
   const u2 = new Updater({
     currentVersion: '0.0.0',
-    exePath: path.join(install, 'ApkStart.exe'),
+    exePath: path.join(install, 'ApkBuddyStart.exe'),
     isPackaged: true,
     dataDir: sandbox,
   });
-  check(u2.flavor === 'setup', '识别为安装版（存在 Uninstall ApkStart.exe）');
+  check(u2.flavor === 'setup', 'Se reconoce como versión instalada (existe Uninstall ApkBuddyStart.exe)');
 
-  // ---- 3. 覆盖脚本真的能跑 ----
+  // ---- 3. El script de sobrescritura funciona de verdad ----
   const payload = path.join(sandbox, 'payload');
   fs.mkdirSync(path.join(payload, 'resources', 'app'), { recursive: true });
-  fs.writeFileSync(path.join(payload, 'ApkStart.exe'), 'new-exe');
+  fs.writeFileSync(path.join(payload, 'ApkBuddyStart.exe'), 'new-exe');
   fs.writeFileSync(path.join(payload, 'resources', 'app', 'main.js'), 'new-main');
-  fs.writeFileSync(path.join(install, 'ApkStart.exe'), 'old-exe');
+  fs.writeFileSync(path.join(install, 'ApkBuddyStart.exe'), 'old-exe');
 
-  // 用一个立刻会退出的进程当「被等待的旧进程」
+  // Usar un proceso que termina enseguida como "proceso antiguo esperado"
   const decoy = spawn(process.execPath, ['-e', 'setTimeout(()=>{},1500)'], { stdio: 'ignore' });
 
   const script = u.apply(
     { mode: 'zip', payload, version: '9.9.9' },
     { waitPid: decoy.pid, spawn: false },
   );
-  check(/Copy-Item/.test(script) && /Wait-Process/.test(script), '脚本包含等待进程与覆盖动作');
+  check(/Copy-Item/.test(script) && /Wait-Process/.test(script), 'El script incluye la espera del proceso y la sobrescritura');
 
   const ps = path.join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe');
-  // 不真去 Start-Process 拉起 ApkStart.exe（那是个假 exe），只验证复制
+  // No se usa Start-Process para abrir ApkBuddyStart.exe (es un exe falso); solo se valida la copia
   const body = script.replace(/if \(Test-Path[^\r\n]*relaunched' \}/, "'skipped relaunch'");
   const b64 = Buffer.from(body, 'utf16le').toString('base64');
   try {
@@ -83,27 +83,27 @@ const ok = (c, m) => console.log(`${c ? '✓' : '✗'} ${m}`);
       stdio: 'ignore', timeout: 60000, windowsHide: true,
     });
   } catch (e) {
-    check(false, `覆盖脚本执行失败：${e.message}`);
+    check(false, `Falló la ejecución del script de sobrescritura: ${e.message}`);
   }
   await sleep(600);
-  const newExe = fs.readFileSync(path.join(install, 'ApkStart.exe'), 'utf8');
+  const newExe = fs.readFileSync(path.join(install, 'ApkBuddyStart.exe'), 'utf8');
   const newMain = fs.readFileSync(path.join(install, 'resources', 'app', 'main.js'), 'utf8');
-  check(newExe === 'new-exe', '安装目录里的 ApkStart.exe 已被替换');
-  check(newMain === 'new-main', '子目录里的文件也替换成功');
+  check(newExe === 'new-exe', 'ApkBuddyStart.exe del directorio de instalación fue reemplazado');
+  check(newMain === 'new-main', 'Los archivos del subdirectorio también se reemplazaron correctamente');
 
-  // ---- 4. apply() 真的起一个进程去替换（异步链路，不走网络）----
+  // ---- 4. apply() inicia realmente un proceso para reemplazar (ruta asíncrona, sin red) ----
   const install2 = path.join(sandbox, 'install2');
   const payload2 = path.join(sandbox, 'payload2');
   fs.mkdirSync(install2, { recursive: true });
   fs.mkdirSync(payload2, { recursive: true });
-  fs.writeFileSync(path.join(install2, 'ApkStart.exe'), 'old-exe');
+  fs.writeFileSync(path.join(install2, 'ApkBuddyStart.exe'), 'old-exe');
   fs.writeFileSync(path.join(install2, 'marker.txt'), 'old');
-  fs.writeFileSync(path.join(payload2, 'ApkStart.exe'), 'new-exe');
+  fs.writeFileSync(path.join(payload2, 'ApkBuddyStart.exe'), 'new-exe');
   fs.writeFileSync(path.join(payload2, 'marker.txt'), 'new');
 
   const u3 = new Updater({
     currentVersion: '0.0.0',
-    exePath: path.join(install2, 'ApkStart.exe'),
+    exePath: path.join(install2, 'ApkBuddyStart.exe'),
     isPackaged: true,
     dataDir: sandbox,
   });
@@ -114,15 +114,15 @@ const ok = (c, m) => console.log(`${c ? '✓' : '✗'} ${m}`);
     await sleep(500);
     try {
       if (fs.readFileSync(path.join(install2, 'marker.txt'), 'utf8') === 'new') { asyncOk = true; break; }
-    } catch (_) { /* 还在替换 */ }
+    } catch (_) { /* Todavía se está reemplazando */ }
   }
-  check(asyncOk, 'apply() 在后台进程里完成了替换（异步链路可用）');
+  check(asyncOk, 'apply() completó el reemplazo en un proceso en segundo plano (ruta asíncrona disponible)');
 
   try { decoy.kill(); } catch (_) { /* ignore */ }
   try { decoy2.kill(); } catch (_) { /* ignore */ }
   fs.rmSync(sandbox, { recursive: true, force: true });
 
   console.log('');
-  console.log(pass ? '结果：通过' : '结果：有失败项');
+  console.log(pass ? 'Resultado: correcto' : 'Resultado: hay fallos');
   process.exit(pass ? 0 : 1);
 })().catch((e) => { console.error('FATAL', e); process.exit(1); });

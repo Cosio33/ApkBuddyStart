@@ -23,7 +23,7 @@ $cb = [P3+EnumProc]{
   [void][P3]::GetWindowThreadProcessId($h, [ref]$pp)
   $proc = Get-Process -Id $pp -ErrorAction SilentlyContinue
   if (-not $proc) { return $true }
-  if ($proc.ProcessName -notmatch 'qemu|electron|ApkStart') { return $true }
+  if ($proc.ProcessName -notmatch 'qemu|electron|ApkBuddyStart') { return $true }
   $cls = New-Object System.Text.StringBuilder 256
   [void][P3]::GetClassNameW($h, $cls, 256)
   $txt = New-Object System.Text.StringBuilder 256

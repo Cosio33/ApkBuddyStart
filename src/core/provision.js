@@ -2,7 +2,7 @@
 /**
  * 运行时自举（Provisioning）
  *
- * ApkStart 不依赖任何第三方模拟器：adb、QEMU、系统镜像全部由自己下载/校验/管理。
+ * ApkBuddyStart 不依赖任何第三方模拟器：adb、QEMU、系统镜像全部由自己下载/校验/管理。
  * 所有运行时文件都放在 %APPDATA%\apkstart\runtime 下，保证在任何安装位置都可写。
  */
 const fs = require('fs');
@@ -537,7 +537,7 @@ class Provisioner {
 
   /**
    * 解析「运行时整包」的下载地址。
-   * 资产名约定：ApkStart-runtime-<tag>.zip（由 .github/workflows/release.yml 产出，
+   * 资产名约定：ApkBuddyStart-runtime-<tag>.zip（由 .github/workflows/release.yml 产出，
    * 内容就是 build/runtime 的那一套：emulator/ + platform-tools/ + aehd/ + system-images/）。
    * GitHub 与 Gitee 两边都扫一遍，取版本号最高的那个；找不到就抛错，让上层退回
    * Google 官方分组件下载。
@@ -563,7 +563,7 @@ class Provisioner {
       if (!item.list) continue;
       for (const rel of item.list) {
         if (!rel || rel.draft) continue;
-        const hit = (rel.assets || []).find((x) => /^ApkStart-runtime-.*\.zip$/i.test(x.name || ''));
+        const hit = (rel.assets || []).find((x) => /^ApkBuddyStart-runtime-.*\.zip$/i.test(x.name || ''));
         if (!hit) continue;
         cands.push({
           url: hit.browser_download_url || hit.url,
@@ -914,6 +914,15 @@ class Provisioner {
       err.failed = failures;
       throw err;
     }
+    // 镜像终于展开成功后，清掉历史部署失败标记。
+    // 否则旧版留下的 deployFailedAt 会让 autoDeploy 一直处于 30 分钟冷却，
+    // 即便镜像已经就绪也不再自动尝试启动 -> 用户看到「装完却用不了」。
+    try {
+      if (Number(store.getSettings().runtime.deployFailedAt || 0)) {
+        store.saveSettings({ runtime: { deployFailedAt: 0 } });
+        if (typeof onLog === 'function') onLog('Marca de error de despliegue anterior eliminada; se reanudan los reintentos automáticos');
+      }
+    } catch (_) { /* 设置写不进去不影响本次结果 */ }
     return done;
   }
 

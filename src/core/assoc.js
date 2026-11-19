@@ -5,11 +5,11 @@
  */
 const { execFileSync } = require('child_process');
 
-const PROGID = 'ApkStart.apk';
+const PROGID = 'ApkBuddyStart.apk';
 const EXT = '.apk';
 const CLASSES = 'HKCU\\Software\\Classes';
 // 关联前的「原默认程序」记在这里，卸载时原样还回去，别把用户的关联弄丢
-const STORE_KEY = 'HKCU\\Software\\ApkStart';
+const STORE_KEY = 'HKCU\\Software\\ApkBuddyStart';
 const PREV_VALUE = 'assocPrev';
 
 function reg(args) {
@@ -48,7 +48,7 @@ function notifyShell() {
   const ps = `
 $sig = '[DllImport("shell32.dll")] public static extern void SHChangeNotify(int eventId, int flags, IntPtr item1, IntPtr item2);';
 try {
-  $t = Add-Type -MemberDefinition $sig -Name 'ShNotify' -Namespace 'ApkStart' -PassThru -ErrorAction Stop;
+  $t = Add-Type -MemberDefinition $sig -Name 'ShNotify' -Namespace 'ApkBuddyStart' -PassThru -ErrorAction Stop;
   $t::SHChangeNotify(0x08000000, 0x0000, [IntPtr]::Zero, [IntPtr]::Zero);
 } catch {}
 `;
@@ -68,7 +68,7 @@ function registerAssociation(exePath, iconPath, extraArgs) {
   const icon = iconPath || exePath;
   const command = `"${exePath}" ${extraArgs ? extraArgs + ' ' : ''}"%1"`;
 
-  // 记住关联前 .apk 的默认程序：用户本来装了别的安卓工具时，卸载 ApkStart
+  // 记住关联前 .apk 的默认程序：用户本来装了别的安卓工具时，卸载 ApkBuddyStart
   // 之后应该还给他，而不是把 .apk 变成「没有默认程序」。
   const prev = regDefault(`${CLASSES}\\${EXT}`);
   if (prev && prev !== PROGID) {
@@ -83,7 +83,7 @@ function registerAssociation(exePath, iconPath, extraArgs) {
   reg(['add', `${CLASSES}\\${PROGID}`, '/ve', '/d', 'Paquete de aplicación de Android', '/f']);
   reg(['add', `${CLASSES}\\${PROGID}`, '/v', 'FriendlyTypeName', '/d', 'Paquete de aplicación de Android', '/f']);
   reg(['add', `${CLASSES}\\${PROGID}\\DefaultIcon`, '/ve', '/d', `"${icon}",0`, '/f']);
-  reg(['add', `${CLASSES}\\${PROGID}\\shell\\open`, '/ve', '/d', 'Instalar en ApkStart', '/f']);
+  reg(['add', `${CLASSES}\\${PROGID}\\shell\\open`, '/ve', '/d', 'Instalar en ApkBuddyStart', '/f']);
   reg(['add', `${CLASSES}\\${PROGID}\\shell\\open\\command`, '/ve', '/d', command, '/f']);
 
   notifyShell();
@@ -93,7 +93,7 @@ function registerAssociation(exePath, iconPath, extraArgs) {
 /**
  * 取消关联。
  * 旧实现无条件把 .apk 的默认值清空（注释写了「仅当仍指向我们自己」，但代码没做），
- * 用户卸载 ApkStart 时会把原本的 .apk 关联一起抹掉。现在：
+ * 用户卸载 ApkBuddyStart 时会把原本的 .apk 关联一起抹掉。现在：
  *  1) 有关联前记录 → 原样还原；
  *  2) 没有记录且当前默认值仍是我们的 → 才清空；
  *  3) 当前默认值是别人的 → 一个字节都不动。

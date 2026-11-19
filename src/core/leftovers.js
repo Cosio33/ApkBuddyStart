@@ -2,12 +2,12 @@
 /**
  * 清理旧版本残留。
  *
- * 用户升级 ApkStart 常出现「装过好几个版本、卸载不干净」：便携版每换一次版本就多一个
- * ApkStart-vX.Y.Z-win64-portable 目录；NSIS 安装版升级后可能留下指向已删除目录的
+ * 用户升级 ApkBuddyStart 常出现「装过好几个版本、卸载不干净」：便携版每换一次版本就多一个
+ * ApkBuddyStart-vX.Y.Z-win64-portable 目录；NSIS 安装版升级后可能留下指向已删除目录的
  * 卸载项；更新过程还会在数据目录里留下一堆临时包。
  *
  * 这里只做**可证明安全**的清理：
- *   - 只认「目录里确实有 ApkStart.exe」的旧版本目录，且绝不碰当前正在运行的那个；
+ *   - 只认「目录里确实有 ApkBuddyStart.exe」的旧版本目录，且绝不碰当前正在运行的那个；
  *   - 只删除「InstallLocation 已经不存在」的注册表卸载项（那个本来就已经是死条目）；
  *   - 只删自己更新缓存里的临时文件与指向不存在目标的开始菜单/桌面快捷方式。
  * 任何一步拿不准就跳过，并把原因如实返回给界面。
@@ -17,7 +17,7 @@ const path = require('path');
 const os = require('os');
 const { execFileSync } = require('child_process');
 
-const EXE = 'ApkStart.exe';
+const EXE = 'ApkBuddyStart.exe';
 
 function dirSize(p) {
   let n = 0;
@@ -47,7 +47,7 @@ function norm(p) {
  * 便携版解压到别的地方（E:\下载、桌面、某个项目目录）就永远扫不到 —— 这正是
  * 「其他文件夹里的旧版本清不掉」的原因。现在多路发现：
  *   - 常见安装位置；
- *   - 各磁盘根目录下的浅层（很多便携版直接丢在 D:\ApkStart-…）；
+ *   - 各磁盘根目录下的浅层（很多便携版直接丢在 D:\ApkBuddyStart-…）；
  *   - 桌面 / 开始菜单里现存快捷方式指向的真实 exe 所在目录（最准，用户装过就一定有）。
  */
 function candidateRoots(installDir) {
@@ -75,7 +75,7 @@ function candidateRoots(installDir) {
 }
 
 /**
- * 从快捷方式（.lnk / .desktop）反查 ApkStart.exe 的真实所在目录。
+ * 从快捷方式（.lnk / .desktop）反查 ApkBuddyStart.exe 的真实所在目录。
  * 这是最可靠的发现手段：只要用户曾经创建过桌面图标或开始菜单项，目标路径就在里面，
  * 无论它被放在哪个盘、哪个深层文件夹。
  */
@@ -87,7 +87,7 @@ function rootsFromShortcuts() {
   for (const h of homes) {
     linkDirs.push(path.join(h, 'Desktop'));
     linkDirs.push(path.join(h, 'AppData', 'Roaming', 'Microsoft', 'Windows', 'Start Menu', 'Programs'));
-    linkDirs.push(path.join(h, 'AppData', 'Roaming', 'Microsoft', 'Windows', 'Start Menu', 'Programs', 'ApkStart'));
+    linkDirs.push(path.join(h, 'AppData', 'Roaming', 'Microsoft', 'Windows', 'Start Menu', 'Programs', 'ApkBuddyStart'));
   }
   for (const d of linkDirs) {
     let list = [];
@@ -101,13 +101,13 @@ function rootsFromShortcuts() {
           const m = /^Exec=(.+)$/m.exec(txt);
           if (m) {
             const exePath = m[1].trim().replace(/^"|"$/g, '').split(/\s+/)[0];
-            if (exePath && /[\\/]ApkStart(\.exe)?$/i.test(exePath)) dirs.add(path.dirname(exePath));
+            if (exePath && /[\\/]ApkBuddyStart(\.exe)?$/i.test(exePath)) dirs.add(path.dirname(exePath));
           }
         } else {
-          // .lnk 是二进制，但目标路径以可读形式内嵌，直接扫字节里的 ApkStart*.exe
+          // .lnk 是二进制，但目标路径以可读形式内嵌，直接扫字节里的 ApkBuddyStart*.exe
           const buf = fs.readFileSync(full);
           const s = buf.toString('latin1');
-          const re = /[A-Za-z]:\\[^\x00\x01-\x1f]*?ApkStart(?:-[^\x00\x01-\x1f]*)?[\\/]?ApkStart\.exe|[A-Za-z]:\\[^\x00\x01-\x1f]*?ApkStart\.exe/gi;
+          const re = /[A-Za-z]:\\[^\x00\x01-\x1f]*?ApkBuddyStart(?:-[^\x00\x01-\x1f]*)?[\\/]?ApkBuddyStart\.exe|[A-Za-z]:\\[^\x00\x01-\x1f]*?ApkBuddyStart\.exe/gi;
           let mm;
           while ((mm = re.exec(s))) {
             dirs.add(path.dirname(mm[0].replace(/\x00.*$/, '')));
@@ -119,7 +119,7 @@ function rootsFromShortcuts() {
   return [...dirs];
 }
 
-/** 旧版本程序目录：形如 ApkStart*，且里面有 ApkStart.exe，且不是当前安装目录 */
+/** 旧版本程序目录：形如 ApkBuddyStart*，且里面有 ApkBuddyStart.exe，且不是当前安装目录 */
 function scanDirs(installDir) {
   const out = [];
   const seen = new Set();
@@ -129,7 +129,7 @@ function scanDirs(installDir) {
     if (seen.has(key)) return;
     seen.add(key);
     if (key === cur) return;
-    // 必须是「真的是 ApkStart」的目录，避免误删同名文件夹
+    // 必须是「真的是 ApkBuddyStart」的目录，避免误删同名文件夹
     if (!fs.existsSync(path.join(full, EXE))) return;
     out.push({
       kind: 'dir',
@@ -143,19 +143,19 @@ function scanDirs(installDir) {
     try { list = fs.readdirSync(root, { withFileTypes: true }); } catch (_) { continue; }
     for (const e of list) {
       if (!e.isDirectory()) continue;
-      if (!/^ApkStart/i.test(e.name)) continue;
+      if (!/^ApkBuddyStart/i.test(e.name)) continue;
       consider(path.join(root, e.name));
     }
   }
   // 快捷方式反查到的目录：本身可能就是旧版本目录，或其父/子目录是
   for (const d of rootsFromShortcuts()) {
-    if (/^ApkStart/i.test(path.basename(d))) consider(d);
+    if (/^ApkBuddyStart/i.test(path.basename(d))) consider(d);
     // 也看看它的同级（dist 下往往并排好几个版本目录）
     const parent = path.dirname(d);
     let sib = [];
     try { sib = fs.readdirSync(parent, { withFileTypes: true }); } catch (_) { continue; }
     for (const e of sib) {
-      if (e.isDirectory() && /^ApkStart/i.test(e.name)) consider(path.join(parent, e.name));
+      if (e.isDirectory() && /^ApkBuddyStart/i.test(e.name)) consider(path.join(parent, e.name));
     }
   }
   return out;
@@ -172,7 +172,7 @@ function scanRegistry() {
   for (const root of roots) {
     let text = '';
     try {
-      text = execFileSync('reg', ['query', root, '/s', '/f', 'ApkStart', '/t', 'REG_SZ'],
+      text = execFileSync('reg', ['query', root, '/s', '/f', 'ApkBuddyStart', '/t', 'REG_SZ'],
         { encoding: 'utf8', windowsHide: true, timeout: 15000, maxBuffer: 4 * 1024 * 1024 });
     } catch (_) { continue; }
     // reg query 输出是分块的「键 → 值」，这里按块切
@@ -180,7 +180,7 @@ function scanRegistry() {
     for (const b of blocks) {
       const key = (/^(HKEY_[^\r\n]+)$/m.exec(b) || [])[1];
       if (!key) continue;
-      if (!/\\ApkStart/i.test(key)) continue;
+      if (!/\\ApkBuddyStart/i.test(key)) continue;
       const loc = (/InstallLocation\s+REG_\w+\s+(.+)/i.exec(b) || [])[1];
       const disp = (/DisplayName\s+REG_\w+\s+(.+)/i.exec(b) || [])[1];
       const unins = (/UninstallString\s+REG_\w+\s+(.+)/i.exec(b) || [])[1];
@@ -210,8 +210,8 @@ function scanTemp(dataDir) {
     try { list = fs.readdirSync(d, { withFileTypes: true }); } catch (_) { continue; }
     for (const e of list) {
       const name = e.name;
-      const isOurs = /^ApkStart.*\.(zip|exe|part\d*|tmp)$/i.test(name)
-        || /^ApkStart-.*\.part\d+$/i.test(name);
+      const isOurs = /^ApkBuddyStart.*\.(zip|exe|part\d*|tmp)$/i.test(name)
+        || /^ApkBuddyStart-.*\.part\d+$/i.test(name);
       if (!isOurs) continue;
       const full = path.join(d, name);
       let size = 0;

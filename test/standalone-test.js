@@ -1,16 +1,16 @@
 'use strict';
 /**
- * 独立运行相关的纯 Node 测试：不需要 Electron、不需要模拟器、不需要联网。
+ * Pure Node tests for standalone operation: no Electron, no emulator, no network.
  *
- * 守的是一条产品底线（0.5.6 起升级为硬约束）：
- *   **ApkStart 在任何机器、任何设置、任何残留配置下都只跑自带运行时。**
+ * This guards a product bottom line (upgraded to a hard constraint in 0.5.6):
+ *   **ApkBuddyStart runs only its bundled runtime on any machine, with any settings, with any leftover config.**
  *
- * 具体要盯住三件事：
- *   1. 代码里根本没有第三方底座（MuMu / 雷电 / 蓝叠 / WSA / FydeOS）的实现文件；
- *   2. 就算 settings.json 里写着 mode=mumu / fydeos / attach，也只会拿到 builtin；
- *   3. 打出来的包里不许出现任何第三方模拟器的二进制或目录。
+ * Three things to watch:
+ *   1. No implementation files for third-party backends (MuMu / LDPlayer / BlueStacks / WSA / FydeOS) exist in the code;
+ *   2. Even if settings.json says mode=mumu / fydeos / attach, only builtin is returned;
+ *   3. The packaged output must not contain any third-party emulator binaries or directories.
  *
- * 运行：node test/standalone-test.js
+ * Run: node test/standalone-test.js
  */
 const assert = require('assert/strict');
 const fs = require('fs');
@@ -43,21 +43,21 @@ function touch(dir, rel, bytes = 8) {
 }
 
 (() => {
-  console.log('\n[独立运行 · 只有一个底座]');
+  console.log('\n[Standalone · only one backend]');
 
   const store = require('../src/core/store');
   const settings = store.getSettings();
 
-  test('默认引擎是自带运行时', () => {
-    assert.equal(settings.engine.mode, 'builtin', `默认 mode=${settings.engine.mode}`);
+  test('The default engine is the bundled runtime', () => {
+    assert.equal(settings.engine.mode, 'builtin', `Default mode=${settings.engine.mode}`);
   });
 
-  test('注册表里只有 builtin，没有第二个底座', () => {
-    assert.equal(backends.REGISTRY.length, 1, `注册表有 ${backends.REGISTRY.length} 个底座`);
+  test('The registry has only builtin, no second backend', () => {
+    assert.equal(backends.REGISTRY.length, 1, `Registry has ${backends.REGISTRY.length} backends`);
     assert.deepEqual(backends.describe().map((d) => d.id), ['builtin']);
   });
 
-  test('任何残留的 mode 都只会创建 builtin（mumu / fydeos / attach / 乱填）', () => {
+  test('Any leftover mode only creates builtin (mumu / fydeos / attach / arbitrary values)', () => {
     for (const mode of ['mumu', 'fydeos', 'attach', 'ldplayer', 'whatever', '']) {
       const made = backends.create({
         appRoot: ROOT, settings: { engine: { mode } }, store, log: () => {},

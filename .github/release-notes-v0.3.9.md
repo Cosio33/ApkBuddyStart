@@ -1,53 +1,53 @@
-# ApkStart v0.3.9
+# ApkBuddyStart v0.3.9
 
-> 一句话：把**横竖屏切换**从「转画面」改成真正的**手机 / 平板排版切换**，修好了全屏不横屏、点击失效、以及点标题栏按钮时冒黑边的问题；另外加了**存储回收**。
+> En una frase: se convierte el **cambio entre vertical y horizontal** de «girar la imagen» a un auténtico **cambio de maquetación de móvil / tableta**; se corrige que la pantalla completa no pasaba a horizontal, que los clics no funcionaban y que apareciera un borde negro al pulsar los botones de la barra de título; además, se añade la **liberación de espacio de almacenamiento**.
 
-## 一、横竖屏 / 全屏：改成真正的排版切换
+## 1. Vertical / horizontal y pantalla completa: ahora es un cambio real de maquetación
 
-**原来的问题**：点旋转（或全屏）后，画面整个顺时针/逆时针躺倒，应用并没有重新排版，也摆不正；全屏也不会自动横屏。
+**El problema anterior**: al pulsar rotar (o pantalla completa), la imagen entera se tumbaba en sentido horario o antihorario, la aplicación no volvía a maquetarse y no había forma de enderezarla; además, la pantalla completa no pasaba automáticamente a horizontal.
 
-**根因**：旧的实现是「改一下 `wm size`，再让窗口代理给模拟器发 Ctrl+←」。Ctrl+← 只是把**模拟器的画面**转 90°，安卓侧排版完全没变 —— 所以看到的就是「画面躺倒」。而且 AVD 生成配置里写死了 `hw.sensors.orientation=no`，安卓根本不允许旋转，只能靠转画面糊弄。
+**Causa raíz**: la implementación anterior consistía en «cambiar `wm size` y pedir al proxy de ventanas que enviara Ctrl+← al emulador». Ctrl+← solo gira **la imagen del emulador** 90°, sin cambiar en absoluto la maquetación de Android, así que lo que se veía era «la imagen tumbada». Además, la configuración de generación del AVD fijaba `hw.sensors.orientation=no`, así que Android no permitía la rotación y solo se podía engañar girando la imagen.
 
-**现在的做法**：
+**Lo que se hace ahora**:
 
-- 只改**逻辑显示尺寸**（`wm size`），让安卓按新宽度重新排版：
-  - 竖屏 720×1280 @320dpi ≈ **360dp 宽 → 手机排版**；
-  - 横屏 1280×720 @320dpi ≈ **640dp 宽 → 平板/分栏排版**（Android 以 600dp 为平板门槛）；
-- 同时 `wm user-rotation lock 0`，保证画面永远是正的，不再出现「躺倒」；
-- **删掉了转画面那一步**，画面与排版始终一致；
-- 窗口会按新分辨率重算宽高比并重新贴合，不留黑边；
-- **全屏按钮现在会自动切横屏（平板排版）**，退出全屏自动回到竖屏手机排版；设置里的「显示模式」切换同样生效；
-- AVD 配置改为 `hw.sensors.orientation=yes` + `hw.sensors.accelerometer=yes`，后续新机器不会再被锁死竖向。
+- Solo se cambia el **tamaño de pantalla lógico** (`wm size`) para que Android vuelva a maquetar con el nuevo ancho:
+  - Vertical 720×1280 @320 dpi ≈ **360 dp de ancho → maquetación de móvil**;
+  - Horizontal 1280×720 @320 dpi ≈ **640 dp de ancho → maquetación de tableta / dos columnas** (Android considera 600 dp el umbral de tableta);
+- Al mismo tiempo, `wm user-rotation lock 0` garantiza que la imagen siempre esté derecha y que no aparezca el «tumbado»;
+- **Se elimina el paso de girar la imagen**, de modo que imagen y maquetación siempre coinciden;
+- La ventana recalcula la relación de aspecto según la nueva resolución y se reajusta, sin dejar bordes negros;
+- **El botón de pantalla completa ahora cambia automáticamente a horizontal (maquetación de tableta)**, y al salir de pantalla completa vuelve a la maquetación vertical de móvil; el conmutador «modo de pantalla» de los ajustes funciona igual;
+- La configuración del AVD pasa a `hw.sensors.orientation=yes` + `hw.sensors.accelerometer=yes`, para que las máquinas nuevas no queden bloqueadas en vertical.
 
-## 二、修复：点标题栏四个按钮时冒出黑边
+## 2. Corrección: aparecía un borde negro al pulsar los cuatro botones de la barra de título
 
-模拟器的 Qt 窗口比真实 LCD 大一圈（四周各 8px 灰边）。为了让灰边不出现在画面里，原来的做法是把子窗口整体向上/向左溢出 8px —— 这 8px 正好压在标题栏底部；而按钮点击时窗口代理会把模拟器窗口抬到最前，于是那条溢出的部分就在标题栏下方画出一条**黑边**。
+La ventana Qt del emulador es algo más grande que la LCD real (8 px de borde gris por cada lado). Para que ese borde gris no apareciera en la imagen, antes se hacía desbordar la ventana hija 8 px hacia arriba y hacia la izquierda, justo sobre la parte inferior de la barra de título; como, al pulsar un botón, el proxy de ventanas trae la ventana del emulador al frente, esa parte desbordada dibujaba un **borde negro** bajo la barra de título.
 
-**修复**：给嵌入的模拟器窗口加了**窗口区域裁剪**（`SetWindowRgn`），把溢出到标题栏的那 8px 直接裁掉。这样无论怎么抬升，它都画不到标题栏上。
+**Corrección**: se añade **recorte de región de ventana** (`SetWindowRgn`) a la ventana del emulador incrustada, recortando directamente esos 8 px que se desbordaban sobre la barra de título. Así, por mucho que se eleve la ventana, no puede dibujar sobre la barra de título.
 
-## 三、修复：点击失效 / 点不到「同意并继续」
+## 3. Corrección: los clics no funcionaban / no se podía pulsar «Aceptar y continuar»
 
-这一条和上面两个问题同源：画面被转 90° 之后，窗口代理的坐标映射仍是「竖屏」的，点击位置整体偏移，看起来就是「点了没反应」。排版切换改对之后点击恢复正常。
+Este punto tiene el mismo origen que los dos anteriores: tras girar la imagen 90°, la asignación de coordenadas del proxy de ventanas seguía siendo la de la «vertical», así que la posición del clic se desplazaba y parecía que «hacer clic no hacía nada». Al corregir el cambio de maquetación, los clics vuelven a funcionar con normalidad.
 
-顺带把「等待联网」的成本压了下来：冷启动重试改成**每个进程只做一次**，首次等待从 60s 降到 25s —— 之前一次点开可能要多等好几分钟，现在正常情况几秒内就过。
+De paso se reduce el coste de «esperar a la red»: el reintento con arranque en frío ahora se hace **una sola vez por proceso** y la primera espera baja de 60 s a 25 s; antes, abrir la aplicación podía suponer esperar varios minutos, y ahora en condiciones normales pasa en unos segundos.
 
-## 四、存储占用优化
+## 4. Optimización del espacio de almacenamiento
 
-「清理旧版本残留」现在会额外回收**废弃的快速启动快照**：
+«Limpiar restos de versiones antiguas» ahora recupera también las **instantáneas de arranque rápido abandonadas**:
 
-- 旧版遗留的 `default_boot`（一份 ram.img 约 **3 GB**）；
-- 删不掉就改名的 `*.stale-*` 残留；
-- 当前正在用的快照（`apkstart`）永远不动。
+- El `default_boot` heredado de versiones antiguas (una copia de ram.img de unos **3 GB**);
+- Los restos `*.stale-*` que no se pudieron borrar y se renombraron;
+- La instantánea en uso actual (`apkstart`) nunca se toca.
 
-实测开发机上可回收项合计约 **4.65 GB**（6 个旧版本程序目录 + 1 份废弃快照）。
+En el equipo de desarrollo, los elementos recuperables suman unos **4,65 GB** (6 directorios de versiones antiguas del programa + 1 instantánea abandonada).
 
-## 五、实测
+## 5. Pruebas reales
 
-- `npm test`：**113 项全部通过**（8 + 25 + 80）。
-- `wm size 1280x720` 后 framebuffer 实测变为 **1280×720**，画面正立（截图确认）。
-- 应用窗口嵌入 `embedded=true`；关闭窗口后 `pidof` 为空（上一版的修复继续有效）。
+- `npm test`: **113 pruebas, todas superadas** (8 + 25 + 80).
+- Tras `wm size 1280x720`, el framebuffer pasa a **1280×720** medido y la imagen está derecha (confirmado con captura).
+- La ventana de la aplicación se incrusta con `embedded=true`; al cerrarla, `pidof` está vacío (la corrección de la versión anterior sigue en vigor).
 
-## 六、升级方式
+## 6. Cómo actualizar
 
-- 便携版：解压覆盖，数据目录（默认 `%APPDATA%\apkstart`）保持不变。
-- 安装版：直接安装覆盖。
+- Versión portable: descomprime y sobrescribe; el directorio de datos (por defecto `%APPDATA%\apkstart`) se mantiene igual.
+- Versión instalada: instala directamente para sobrescribir.

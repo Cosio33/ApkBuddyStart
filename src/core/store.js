@@ -17,7 +17,7 @@ const { safeFilePart } = require('./pkgname');
  *   1. 我们从 %APPDATA%\apkstart 里 spawn 出来的 emulator/adb/qemu 若没有包身份，
  *      按真路径去找文件会「文件不存在」；
  *   2. 用户点「打开数据目录」看到的是空目录。
- * 所以商店版直接把数据目录放到 AppData **之外**（%USERPROFILE%\ApkStart），
+ * 所以商店版直接把数据目录放到 AppData **之外**（%USERPROFILE%\ApkBuddyStart），
  * 完全不进虚拟化范围，父子进程看到的是同一份真实文件。
  *
  * process.windowsStore 由 Electron 在 MSIX/APPX 环境下注入（普通 node 下是 undefined）。
@@ -27,7 +27,7 @@ const STORE_BUILD = (() => {
 })();
 
 const DATA_DIR = STORE_BUILD
-  ? path.join(os.homedir(), 'ApkStart', 'data')
+  ? path.join(os.homedir(), 'ApkBuddyStart', 'data')
   : path.join(process.env.APPDATA || path.join(os.homedir(), 'AppData', 'Roaming'), 'apkstart');
 const ICON_DIR = path.join(DATA_DIR, 'icons');
 const APK_DIR = path.join(DATA_DIR, 'apks');
@@ -54,7 +54,7 @@ const DEFAULT_SETTINGS = {
     idleShutdownMinutes: 15,
     startVisible: true,
     // 必须带窗口：无头模式 SurfaceFlinger 不出 VSYNC，应用进程活着但屏幕上什么都没有。
-    // 带窗口的模拟器是原生 60fps + 原生鼠标键盘，ApkStart 只负责把它打扮成应用窗口。
+    // 带窗口的模拟器是原生 60fps + 原生鼠标键盘，ApkBuddyStart 只负责把它打扮成应用窗口。
     headless: false,
     gpuMode: 'auto',         // auto = 按 emulator 版本自动挑后端并逐级降级
     // 上次「拉起就崩」的渲染后端（格式 `<emulator版本>|<gpu>`）；auto 模式下下次把它排到最后，
@@ -96,7 +96,7 @@ const DEFAULT_SETTINGS = {
     deepTrim: false,         // 深度裁剪系统后台包（Play 商店/向导等），默认不动系统
     // balanced=让出前台 | performance=qemu Normal | game=qemu High + 低延迟输入
   priorityMode: 'balanced',
-    // 预热：启动 ApkStart 后在后台把安卓环境引导好，第一次点应用几乎不用等。
+    // 预热：启动 ApkBuddyStart 后在后台把安卓环境引导好，第一次点应用几乎不用等。
     // 代价是常驻约 1GB 内存（和 WSA / 应用宝电脑版一样的取舍），可随时关掉。
     prewarm: true,
     // 多窗口（B 方案）：允许同时打开多个应用、各自独立窗口。默认关闭，
@@ -143,8 +143,8 @@ const DEFAULT_SETTINGS = {
     // 想用 Gitee 作为更新源就在这里填一个只读 token；留空则只用 GitHub + 镜像。
     giteeToken: '',
   },
-  sharedDir: path.join(os.homedir(), 'ApkStartShared'),
-  deviceSharedDir: '/sdcard/ApkStartShared',
+  sharedDir: path.join(os.homedir(), 'ApkBuddyStartShared'),
+  deviceSharedDir: '/sdcard/ApkBuddyStartShared',
   autoConnect: true,
   createShortcutOnInstall: true,
   createStartMenuShortcut: true, // 开始菜单快捷方式 = 让 Windows 搜索能搜到应用
@@ -164,7 +164,7 @@ const DEFAULT_SETTINGS = {
     rememberBounds: true,    // 记住每个应用的窗口位置/大小
     autoFullscreenOnLaunch: false,
     // 横屏 = 把 AVD 物理面板换成 1280x720 并重启（唯一能得到正立+铺满的方式）。
-    // 持久化在这里，重启 ApkStart 后仍按这个方向开机。
+    // 持久化在这里，重启 ApkBuddyStart 后仍按这个方向开机。
     landscape: false,
     // 屏幕方向策略：
     //   auto      = 按应用自己声明的方向自动换物理面板（推荐，只有这样画面才能铺满窗口）
@@ -177,7 +177,7 @@ const DEFAULT_SETTINGS = {
     // 越过 Android 的平板断点）。红果短剧这类应用只有在平板排版下才有双列剧集页，
     // 也是用户要的「平板模式」。关掉就回到镜像默认密度（手机排版）。
     tabletMode: true,
-    // 窗口模式：true=把安卓画面嵌进 ApkStart 自己的窗口（观感统一）；
+    // 窗口模式：true=把安卓画面嵌进 ApkBuddyStart 自己的窗口（观感统一）；
     // false=让模拟器开自己的原生窗口（绕开嵌入固有的黑边/坐标错位/铺不满问题）。
     windowEmbed: true,
   },
@@ -253,7 +253,7 @@ const store = {
      * 或者手改出来的任何其它值，一律当 builtin 处理，并把残留的第三方字段删掉。
      *
      * 只在读的时候改内存里的对象，不立刻回写磁盘：设置文件是用户的，等他下次
-     * 保存设置时自然落盘；这样「打开一次 ApkStart 就改了他的 settings.json」不会发生。
+     * 保存设置时自然落盘；这样「打开一次 ApkBuddyStart 就改了他的 settings.json」不会发生。
      */
     s.engine.mode = 'builtin';
     for (const k of ['mumuPath', 'mumuIndex', 'mumuRenderProfile', 'mumuMemoryGB', 'mumuCores', 'fydeosHost']) {

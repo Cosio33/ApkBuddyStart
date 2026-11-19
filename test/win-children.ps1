@@ -1,4 +1,4 @@
-# List child windows of the ApkStart app window (the embedded emulator lives there).
+# List child windows of the ApkBuddyStart app window (the embedded emulator lives there).
 Add-Type -TypeDefinition @'
 using System;
 using System.Runtime.InteropServices;
@@ -21,7 +21,7 @@ $cb = [C4+EnumProc]{
   param($h, $p)
   $txt = New-Object System.Text.StringBuilder 256
   [void][C4]::GetWindowTextW($h, $txt, 256)
-  if ($txt.ToString() -eq 'ApkStart') {
+  if ($txt.ToString() -eq 'ApkBuddyStart') {
     $r = New-Object C4+RECT
     [void][C4]::GetWindowRect($h, [ref]$r)
     if (($r.R - $r.L) -gt 300 -and ($r.R - $r.L) -lt 800) { $script:hostWnd = $h }

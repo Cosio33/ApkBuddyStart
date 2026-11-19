@@ -2,7 +2,7 @@
 /**
  * 驱动（兼容补丁）扩展模块。
  *
- * 背景：ApkStart 用的是官方 emulator + 固定镜像，但「能不能跑起来」非常吃机器：
+ * 背景：ApkBuddyStart 用的是官方 emulator + 固定镜像，但「能不能跑起来」非常吃机器：
  * 老显卡的 GLES 只到 3.1、没有 WHPX 只能走 TCG、某些核显 + 老驱动一开 host 渲染就崩……
  * 这些差异没法靠一份默认参数覆盖所有机器，而发版周期又跟不上用户的机器型号。
  *
@@ -57,8 +57,8 @@ const FORBIDDEN_ARGS = {
   '-datadir': 'Cambia la ubicación del AVD y rompe el aislamiento de múltiples instancias',
   '-sysdir': 'Cambia la fuente de la imagen del sistema',
   '-partition-size': 'Cambia el tamaño de la partición de datos; usa la página de ajustes',
-  '-avd': 'El nombre del AVD lo gestiona ApkStart',
-  '-port': 'ApkStart asigna el puerto dinámicamente',
+  '-avd': 'El nombre del AVD lo gestiona ApkBuddyStart',
+  '-port': 'ApkBuddyStart asigna el puerto dinámicamente',
   '-http-proxy': 'El proxy se configura en los ajustes del sistema',
 };
 
@@ -598,7 +598,7 @@ function templateFromHost(host = {}, { name = 'Mi máquina' } = {}) {
     name: `${name} parche de compatibilidad`,
     version: '1.0.0',
     author: '',
-    description: 'Generado por «Exportar plantilla local» de ApkStart: los criterios match ya están rellenados para este equipo; modifica solo effect.',
+    description: 'Generado por «Exportar plantilla local» de ApkBuddyStart: los criterios match ya están rellenados para este equipo; modifica solo effect.',
     priority: 0,
     match: {
       platform: host.platform || process.platform,

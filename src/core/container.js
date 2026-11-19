@@ -2,7 +2,7 @@
 /**
  * 应用级容器（纯计算层）
  *
- * ApkStart 底层是 QEMU 全系统虚拟机，不可能像 WSA / 卓易通那样「只加载某个 App
+ * ApkBuddyStart 底层是 QEMU 全系统虚拟机，不可能像 WSA / 卓易通那样「只加载某个 App
  * 需要的那几个系统服务」——Linux 内核、zygote、system_server 必须整包起来。
  * 但用户真正感受到的「重」并不来自这些常驻服务，而来自：
  *   1. 每开一个 App 就重新引导一次完整 Android（冷启 40~142 秒，CPU/磁盘打满）；

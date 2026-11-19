@@ -194,7 +194,7 @@ function diskVerdict(freeMB, requiredMB) {
     ok: false,
     freeMB: free,
     requiredMB: need,
-    message: `Espacio en disco insuficiente: se necesitan unos ${Math.ceil(need / 1024)} GB, pero en el disco donde se encuentra el entorno de ejecución de ApkStart solo quedan ${(free / 1024).toFixed(1)} GB。`
+    message: `Espacio en disco insuficiente: se necesitan unos ${Math.ceil(need / 1024)} GB, pero en el disco donde se encuentra el entorno de ejecución de ApkBuddyStart solo quedan ${(free / 1024).toFixed(1)} GB。`
       + 'En Ajustes, mueve la carpeta del entorno de ejecución a una partición con más espacio, o libera espacio y vuelve a intentarlo.',
   };
 }

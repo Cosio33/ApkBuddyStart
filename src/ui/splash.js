@@ -1,5 +1,5 @@
 'use strict';
-/* ApkStart 开机动画脚本：接收主进程的进度更新，控制淡出 */
+/* ApkBuddyStart 开机动画脚本：接收主进程的进度更新，控制淡出 */
 
 const api = window.apkstartSplash;
 if (!api) { /* preload 未注入时静默退出 */ }

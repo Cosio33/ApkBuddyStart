@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""生成 ApkStart 公众号 / 抖音推广配图（Pillow，零第三方服务依赖）"""
+"""Genera las imágenes promocionales de ApkBuddyStart para la cuenta oficial de WeChat / Douyin (Pillow, sin dependencias de servicios de terceros)"""
 import os
 import qrcode
 from PIL import Image, ImageDraw, ImageFont, ImageFilter
@@ -63,7 +63,7 @@ def rounded(im, box, radius, fill, outline=None, width=1):
 
 
 def paste_fit(canvas, img, box, radius=0):
-    """等比缩放居中贴入 box"""
+    """Escala manteniendo la proporción y pega centrado en el cuadro (box)"""
     x, y, w, h = box
     r = min(w / img.width, h / img.height)
     im = img.resize((int(img.width * r), int(img.height * r)), Image.LANCZOS)
@@ -92,11 +92,11 @@ BRAND = Image.open(os.path.join(IMG, 'brand.png')).convert('RGB')
 RELEASE = 'https://github.com/RoutineMiku/apkstart/releases/tag/v0.2.2'
 
 
-# ---------- 微信公众号封面 900x383 ----------
+# ---------- Portada de la cuenta oficial de WeChat 900x383 ----------
 def cover():
     im = grad(900, 383, (13, 17, 23), (16, 40, 28))
     d = ImageDraw.Draw(im)
-    # 背景光晕
+    # Halo de fondo
     glow = Image.new('RGBA', (900, 383), (0, 0, 0, 0))
     gd = ImageDraw.Draw(glow)
     gd.ellipse((-120, 180, 420, 620), fill=(61, 220, 132, 28))
@@ -104,26 +104,26 @@ def cover():
     im = Image.alpha_composite(im.convert('RGBA'), glow).convert('RGB')
     d = ImageDraw.Draw(im)
     paste_fit(im, LOGO, (36, 60, 262, 262), radius=34)
-    text_block(d, (330, 78), 'ApkStart', 62, WHITE, 540, bold=True, spacing=0)
-    text_block(d, (334, 158), '双击 .apk 就在 Windows 上跑安卓应用', 26, GREEN, 530, bold=True)
-    text_block(d, (334, 214), '开源 · 免费 · 独立窗口 · 内置 ARM 兼容镜像', 20, MUTED, 530)
+    text_block(d, (330, 78), 'ApkBuddyStart', 62, WHITE, 540, bold=True, spacing=0)
+    text_block(d, (334, 158), 'Doble clic en .apk y ejecuta apps Android en Windows', 26, GREEN, 530, bold=True)
+    text_block(d, (334, 214), 'Código abierto · Gratis · Ventanas independientes · Imagen compatible con ARM integrada', 20, MUTED, 530)
     rounded(im, (334, 274, 650, 322), 24, fill=(61, 220, 132))
-    d.text((356, 282), 'v0.2.2  完整版开箱即用', font=font(22, True), fill=(9, 22, 15))
+    d.text((356, 282), 'v0.2.2  Versión completa lista para usar', font=font(22, True), fill=(9, 22, 15))
     im.save(os.path.join(OUT, 'wechat-cover.jpg'), quality=94)
     return im
 
 
-# ---------- 下载页二维码 ----------
+# ---------- Códigos QR de la página de descarga ----------
 def download_qr():
-    """公众号正文用：两枚二维码分别直达两个安装包（扫码即下）"""
+    """Para el cuerpo del artículo de la cuenta oficial: dos códigos QR que llevan directamente a cada instalador (escanear y descargar)"""
     im = Image.new('RGB', (1080, 700), (247, 250, 248))
     d = ImageDraw.Draw(im)
     rounded(im, (24, 24, 1056, 676), 28, fill=(255, 255, 255), outline=(222, 232, 226), width=2)
-    d.text((60, 52), '扫码下载 ApkStart v0.2.2', font=font(40, True), fill=(13, 17, 23))
-    d.text((62, 110), '微信内长按识别二维码，或点文末「阅读原文」', font=font(24), fill=(100, 118, 108))
+    d.text((60, 52), 'Escanea para descargar ApkBuddyStart v0.2.2', font=font(40, True), fill=(13, 17, 23))
+    d.text((62, 110), 'Mantén pulsado en WeChat para escanear el QR, o pulsa «Leer el original» al final', font=font(24), fill=(100, 118, 108))
     cards = [
-        (60, '轻量版 · 0.11 GB', 'ApkStart-v0.2.2-win64-portable.zip', '一键部署，约 2 分钟'),
-        (560, '完整版 · 1.35 GB', 'ApkStart-v0.2.2-win64-full.7z.001', '内置引擎+镜像，解压即用'),
+        (60, 'Versión ligera · 0,11 GB', 'ApkBuddyStart-v0.2.2-win64-portable.zip', 'Despliegue con un clic, unos 2 minutos'),
+        (560, 'Versión completa · 1,35 GB', 'ApkBuddyStart-v0.2.2-win64-full.7z.001', 'Motor + imagen integrados, funciona al descomprimir'),
     ]
     for x, name, asset, tip in cards:
         rounded(im, (x, 170, x + 460, 636), 24, fill=(246, 250, 247), outline=(222, 232, 226), width=2)
@@ -135,18 +135,18 @@ def download_qr():
     return im
 
 
-# ---------- 抖音竖版轮播 1080x1440 ----------
+# ---------- Carrusel vertical de Douyin 1080x1440 ----------
 W, H = 1080, 1440
 
 
 def douyin_base(idx, title, subtitle=None):
     im = grad(W, H, (11, 15, 20), (14, 34, 24))
     d = ImageDraw.Draw(im)
-    # 顶部品牌条
+    # Franja de marca superior
     paste_fit(im, LOGO, (64, 62, 92, 92), radius=20)
-    d.text((178, 78), 'ApkStart', font=font(38, True), fill=WHITE)
+    d.text((178, 78), 'ApkBuddyStart', font=font(38, True), fill=WHITE)
     d.text((178, 126), 'Powered by RoutineMiku', font=font(22), fill=MUTED)
-    # 页码
+    # Número de página
     d.text((930, 80), f'{idx}/5', font=font(30, True), fill=GREEN)
     y = text_block(d, (64, 232), title, 62, WHITE, 950, bold=True, spacing=14)
     if subtitle:
@@ -155,22 +155,22 @@ def douyin_base(idx, title, subtitle=None):
 
 
 def dy1():
-    im, d = douyin_base(1, '双击 .apk\n就在电脑上跑安卓 App', '不用装模拟器，不用折腾环境')
-    # 大 Logo 居中
+    im, d = douyin_base(1, 'Doble clic en .apk\ny Android corre en el ordenador', 'Sin emulador ni configuraciones complicadas')
+    # Logotipo grande centrado
     paste_fit(im, LOGO, (290, 560, 500, 500), radius=70)
     rounded(im, (190, 1110, 890, 1190), 40, fill=(61, 220, 132))
-    d.text((250, 1126), '开源 · 免费 · 单文件绿色运行', font=font(38, True), fill=(9, 22, 15))
-    text_block(d, (64, 1250), 'Windows 上最轻的安卓应用启动器', 32, MUTED, 950)
+    d.text((250, 1126), 'Código abierto · Gratis · Un solo archivo portable', font=font(38, True), fill=(9, 22, 15))
+    text_block(d, (64, 1250), 'El lanzador de apps Android más ligero para Windows', 32, MUTED, 950)
     im.save(os.path.join(OUT, 'douyin-1.png'))
     return im
 
 
 def dy2():
-    im, d = douyin_base(2, '以前跑个安卓 App\n有多麻烦？')
+    im, d = douyin_base(2, 'Antes, ejecutar una app Android\n¿qué difícil era?')
     items = [
-        ('下载慢', '动辄几个 GB 的模拟器，等半天'),
-        ('装不上', 'ARM 应用报 NO_MATCHING_ABIS'),
-        ('太臃肿', '一开模拟器风扇起飞、弹窗广告'),
+        ('Descarga lenta', 'Emuladores de varios GB y media espera'),
+        ('No se instala', 'Las apps ARM dan NO_MATCHING_ABIS'),
+        ('Demasiado pesado', 'El ventilador se dispara y saltan anuncios al arrancar'),
     ]
     y = 540
     for t, sub in items:
@@ -179,18 +179,18 @@ def dy2():
         d.text((190, y + 30), t, font=font(44, True), fill=WHITE)
         d.text((190, y + 108), sub, font=font(30), fill=MUTED)
         y += 240
-    text_block(d, (64, 1300), '所以我自己写了一个：ApkStart', 40, GREEN, 950, bold=True)
+    text_block(d, (64, 1300), 'Así que escribí uno yo mismo: ApkBuddyStart', 40, GREEN, 950, bold=True)
     im.save(os.path.join(OUT, 'douyin-2.png'))
     return im
 
 
 def dy3():
-    im, d = douyin_base(3, '四个特性，装完就用')
+    im, d = douyin_base(3, 'Cuatro características, funciona al instalar')
     feats = [
-        ('双击安装', '关联 .apk，双击即装，自动生成桌面快捷方式'),
-        ('独立窗口', '每个 App 一个自由缩放的窗口，互不干扰'),
-        ('文件互通', '电脑与安卓共享文件夹，拖进去就能用'),
-        ('官方引擎', 'Google Android Emulator + AEHD 硬件加速'),
+        ('Instalación con doble clic', 'Asocia .apk, doble clic e instala, crea el acceso directo automáticamente'),
+        ('Ventanas independientes', 'Cada app en una ventana redimensionable, sin interferencias'),
+        ('Archivos compartidos', 'Carpeta compartida entre PC y Android, arrastra y listo'),
+        ('Motor oficial', 'Google Android Emulator + aceleración por hardware AEHD'),
     ]
     y = 470
     for i, (t, sub) in enumerate(feats):
@@ -201,35 +201,35 @@ def dy3():
         d.text((210, y + 90), sub, font=font(27), fill=MUTED)
         y += 180
     rounded(im, (64, 1200, 1016, 1310), 28, fill=(20, 48, 33), outline=GREEN, width=2)
-    d.text((100, 1228), '设置里一键开启 ARM 兼容模式', font=font(38, True), fill=GREEN)
-    d.text((100, 1286), '仅含 ARM 原生库的应用，也能安装运行', font=font(26), fill=MUTED)
+    d.text((100, 1228), 'Activa el modo de compatibilidad ARM con un clic en los ajustes', font=font(38, True), fill=GREEN)
+    d.text((100, 1286), 'Incluso apps con solo bibliotecas nativas ARM se pueden instalar y ejecutar', font=font(26), fill=MUTED)
     im.save(os.path.join(OUT, 'douyin-3.png'))
     return im
 
 
 def dy4():
-    im, d = douyin_base(4, 'ARM / 字节系应用\n这次真的能跑', 'Android 14 镜像内置新版翻译层')
+    im, d = douyin_base(4, 'ARM / apps de ByteDance\nesta vez sí funcionan', 'Imagen de Android 14 con la nueva capa de traducción integrada')
     paste_fit(im, HONGGUO, (330, 470, 420, 760), radius=30)
     rounded(im, (64, 1250, 1016, 1360), 28, fill=PANEL)
-    text_block(d, (100, 1266), '实测红果短剧：安装 → 推荐流 → 视频播放，全程不崩', 30, GREEN, 890, bold=True)
+    text_block(d, (100, 1266), 'Probado con Hongguo Short Drama: instalar → recomendaciones → reproducción, sin fallos', 30, GREEN, 890, bold=True)
     im.save(os.path.join(OUT, 'douyin-4.png'))
     return im
 
 
 def dy5():
-    im, d = douyin_base(5, '两个版本，任选', '完整版解压即用，零下载零设置')
+    im, d = douyin_base(5, 'Dos versiones, elige', 'La versión completa funciona al descomprimir, sin descargas ni ajustes')
     rounded(im, (64, 460, 1016, 660), 30, fill=PANEL)
-    text_block(d, (100, 486), '轻量版  0.11 GB', 40, WHITE, 880, bold=True)
-    text_block(d, (100, 548), '首次启动一键部署，约 2 分钟自动装好引擎与镜像', 28, MUTED, 880)
+    text_block(d, (100, 486), 'Versión ligera  0,11 GB', 40, WHITE, 880, bold=True)
+    text_block(d, (100, 548), 'Despliegue con un clic en el primer inicio; motor e imagen se instalan solos en unos 2 minutos', 28, MUTED, 880)
     rounded(im, (64, 690, 1016, 910), 30, fill=(20, 48, 33), outline=GREEN, width=2)
-    text_block(d, (100, 716), '完整版  1.35 GB  ★ 推荐', 40, GREEN, 880, bold=True)
-    text_block(d, (100, 778), '内置引擎 + AEHD + Android 14 兼容镜像（翻译层）', 28, WHITE, 880)
-    text_block(d, (100, 826), '解压双击 ApkStart.exe 直接进主界面', 28, MUTED, 880)
+    text_block(d, (100, 716), 'Versión completa  1,35 GB  ★ Recomendada', 40, GREEN, 880, bold=True)
+    text_block(d, (100, 778), 'Motor + AEHD + imagen compatible con Android 14 (capa de traducción) integrados', 28, WHITE, 880)
+    text_block(d, (100, 826), 'Descomprime y haz doble clic en ApkBuddyStart.exe para entrar directo en la interfaz', 28, MUTED, 880)
     paste_fit(im, qr_png(RELEASE, 400), (64, 950, 400, 400))
-    text_block(d, (510, 990), '扫码下载', 46, WHITE, 500, bold=True)
-    text_block(d, (510, 1060), 'GitHub 搜索\nRoutineMiku/apkstart', 30, MUTED, 500, spacing=6)
-    text_block(d, (510, 1170), '抖音 @日常MIKU', 34, GREEN, 500, bold=True)
-    text_block(d, (510, 1224), '公众号见主页二维码', 28, MUTED, 500)
+    text_block(d, (510, 990), 'Escanea para descargar', 46, WHITE, 500, bold=True)
+    text_block(d, (510, 1060), 'Busca en GitHub\nRoutineMiku/apkstart', 30, MUTED, 500, spacing=6)
+    text_block(d, (510, 1170), 'Douyin @DailyMIKU', 34, GREEN, 500, bold=True)
+    text_block(d, (510, 1224), 'Cuenta oficial: QR en el perfil', 28, MUTED, 500)
     im.save(os.path.join(OUT, 'douyin-5.png'))
     return im
 

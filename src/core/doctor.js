@@ -329,7 +329,7 @@ function planVariants(profile) {
     label: 'Arranque en frío conservador (memoria mínima + borrar instantánea)',
     // 这里**绝对不能** wipe：以前写的是 wipe:true，而磁盘写满时每次尝试都会失败，
     // 于是连续重试把用户已装的应用和存档一起「清快照 + 清数据」了 ——
-    // 「磁盘满了，结果打开 ApkStart 应用全没了」就是这么发生的。
+    // 「磁盘满了，结果打开 ApkBuddyStart 应用全没了」就是这么发生的。
     // 需要重建 userdata 时由 ensureDataPartition 自己判断（它只在镜像损坏时重建），
     // 不靠启动参数里的 -wipe-data。
     wipe: false,
@@ -368,9 +368,9 @@ async function freePortPair(start = 5554) {
 /**
  * adb server 端口：固定不复用探测。
  * 之前是"从 5044 往上找一个空闲端口"，但 adb server 本身是常驻进程，占着这个端口，
- * 于是每启动一次 ApkStart 就会多一个 adb server（实测一次会话跑出 6 个），
+ * 于是每启动一次 ApkBuddyStart 就会多一个 adb server（实测一次会话跑出 6 个），
  * 而且端口老是变，下次启动想接管上次的模拟器时对不上号。
- * 5044 是 ApkStart 专用端口（用户自己的 adb 在 5037），直接固定用。
+ * 5044 是 ApkBuddyStart 专用端口（用户自己的 adb 在 5037），直接固定用。
  */
 async function freeAdbPort(start = 5044) {
   return Number(process.env.APKSTART_ADB_PORT) || start;
@@ -468,7 +468,7 @@ const RULES = [
     code: 'DLL',
     re: /0xc0000135|STATUS_DLL_NOT_FOUND|missing DLL|Qt6.*not found|MSVCP140|VCRUNTIME|无法启动此程序|The code execution cannot proceed/i,
     title: 'Los componentes del entorno de ejecución fueron eliminados por el antivirus o falta la biblioteca VC++',
-    hint: 'Añade la carpeta de ApkStart a la lista blanca del antivirus, vuelve a extraer el instalador e instala el runtime de Microsoft VC++ 2015-2022.',
+    hint: 'Añade la carpeta de ApkBuddyStart a la lista blanca del antivirus, vuelve a extraer el instalador e instala el runtime de Microsoft VC++ 2015-2022.',
   },
   {
     code: 'DISK_FULL',
@@ -481,7 +481,7 @@ const RULES = [
     code: 'NON_ASCII',
     re: /Unicode|non-ASCII|路径.*(无效|找不到)|cannot find the path/i,
     title: 'La ruta de instalación contiene caracteres chinos o especiales',
-    hint: 'Se cambió automáticamente a una ruta corta de Windows. Si sigue fallando, mueve ApkStart a una carpeta solo en inglés (p. ej., C:\\ApkStart).',
+    hint: 'Se cambió automáticamente a una ruta corta de Windows. Si sigue fallando, mueve ApkBuddyStart a una carpeta solo en inglés (p. ej., C:\\ApkBuddyStart).',
   },
   {
     // 上次被强制结束后 AVD 目录会留下 hardware-qemu.ini.lock / multiinstance.lock，
@@ -489,7 +489,7 @@ const RULES = [
     code: 'AVD_LOCK',
     re: /Running multiple emulators with the same AVD|AVD .*is already running|hardware-qemu\.ini\.lock/i,
     title: 'La ejecución anterior no terminó correctamente y dejó archivos de bloqueo',
-    hint: 'ApkStart limpiará los bloqueos residuales y lo reintentará; si se repite, comprueba que otra máquina virtual no esté usando el mismo entorno.',
+    hint: 'ApkBuddyStart limpiará los bloqueos residuales y lo reintentará; si se repite, comprueba que otra máquina virtual no esté usando el mismo entorno.',
   },
   {
     code: 'CPU_FEATURE',
@@ -533,7 +533,7 @@ function writeReport({ dataDir, profile, logLines = [], extra = {} }) {
   const file = path.join(dir, `diagnostic-${new Date().toISOString().replace(/[:.]/g, '-')}.txt`);
   const d = diagnose(logLines);
   const body = [
-    'Informe de diagnóstico de ApkStart',
+    'Informe de diagnóstico de ApkBuddyStart',
     `Fecha de generación:${new Date().toLocaleString()}`,
     '',
     '== Este equipo ==',

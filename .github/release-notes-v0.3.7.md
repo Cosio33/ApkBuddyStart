@@ -1,49 +1,45 @@
-# ApkStart v0.3.7
+# ApkBuddyStart v0.3.7
 
-> 一句话：修好**应用窗口右上角的关闭（关掉要真正结束安卓应用）**，并把**虚拟机网络**从「等运气」改成「自动自愈」；CI 同步 Gitee 的 token 也配好了。
+> En una frase: se arregla **el botón de cerrar de la esquina superior derecha de la ventana de la aplicación** (cerrar debe terminar realmente la aplicación Android) y se pasa la **red de la máquina virtual** de «depender de la suerte» a «autosanación»; además, ya está configurado el token de CI para sincronizar Gitee.
 
-## 一、修复：右上角窗口按钮，关闭现在会真正结束应用
+## 1. Corrección: el botón de la esquina superior derecha; cerrar ahora termina realmente la aplicación
 
-**问题**：点标题栏的 ⨯，窗口消失了，但安卓应用还在后台跑；再点开那个应用时看起来像「没关掉过」。
+**Problema**: al pulsar la ⨯ de la barra de título, la ventana desaparece, pero la aplicación Android sigue ejecutándose en segundo plano; al volver a abrir esa aplicación parece como si no se hubiera cerrado nunca.
 
-**原因**：`shell:close` 直接调了 Electron 的 `win.close()`，绕过了 `AppWindow.close()` 的收尾逻辑。窗口的 `closed` 事件只清了内部状态，**既没有 `force-stop` 安卓应用，也没有把模拟器窗口从宿主上摘下来**。走 Alt+F4 / 任务栏关闭时同样如此。
+**Causa**: `shell:close` llamaba directamente a `win.close()` de Electron, saltándose la lógica de cierre de `AppWindow.close()`. El evento `closed` de la ventana solo limpiaba el estado interno: **no hacía `force-stop` de la aplicación Android ni separaba la ventana del emulador del anfitrión**. Lo mismo ocurría al cerrar con Alt+F4 o desde la barra de tareas.
 
-**修复**：
+**Corrección**:
 
-- ⨯ 按钮改为走 `appWin.close()`：先把模拟器窗口摘下藏好，再 `am force-stop` 停掉安卓应用；
-- `closed` 事件也补上同样的收尾（覆盖 Alt+F4、任务栏关闭、系统关机等路径）；
-- 旋转 / 最小化 / 最大化逻辑保持原样，未改动。
+- El botón ⨯ ahora pasa por `appWin.close()`: primero separa y oculta la ventana del emulador, y luego detiene la aplicación Android con `am force-stop`;
+- El evento `closed` incorpora la misma lógica de cierre (cubre Alt+F4, cierre desde la barra de tareas, apagado del sistema, etc.);
+- La lógica de rotación / minimizar / maximizar se mantiene igual, sin cambios.
 
-**实测**：向应用窗口发 `WM_CLOSE` 后，`pidof com.phoenix.read` 从 `5152` 变成**空**，前台回到安卓桌面 —— 应用是真的退出了。
+**Prueba real**: tras enviar `WM_CLOSE` a la ventana de la aplicación, `pidof com.phoenix.read` pasa de `5152` a **vacío** y el primer plano vuelve al escritorio de Android: la aplicación realmente ha salido.
 
-## 二、网络：不再靠运气，改成自动自愈
+## 2. Red: se acabó depender de la suerte, ahora hay autosanación
 
-上一版已经定位到「红果点同意后黑屏」= 虚拟机没网。但当时只是"多等一会儿"，遇上 Wi-Fi 一直不关联的启动还是会超时。
+La versión anterior ya había localizado que «Hongguo se queda en pantalla negra al pulsar aceptar» = la máquina virtual no tiene red. Pero entonces solo se trataba de «esperar un poco más», y en un arranque en el que el Wi-Fi no se asocia nunca seguía agotándose el tiempo de espera.
 
-本版把网络处理改成**按代价从小到大自动升级**：
+Esta versión cambia el tratamiento de la red por una **escalada automática de menor a mayor coste**:
 
-1. **启动应用前先等网络**（最多 60s，日志可见进度）；
-2. 等不到就**冷启动一次虚拟机**（`-no-snapshot-load`，绕开可能是"没网"时存下的快速启动快照），再等最多 180s；
-3. 网络一通就**立刻存快照**，下次恢复时网卡状态一起还原；
-4. 「设置 → 修复网络」用同一套流程，只有前两步都失败才**重置安卓数据**（应用清单保留、点开会自动重装，但应用内登录态/记录会丢）。
+1. **Esperar a la red antes de lanzar la aplicación** (máx. 60 s, con progreso visible en el registro);
+2. Si no se consigue, **hacer un arranque en frío de la máquina virtual** (`-no-snapshot-load`, para evitar una instantánea de arranque rápido que se guardara mientras no había red) y esperar de nuevo hasta 180 s;
+3. En cuanto la red funciona, **se guarda de inmediato una instantánea**, de modo que la próxima vez se restaure también el estado de la tarjeta de red;
+4. «Ajustes → Reparar red» usa el mismo flujo y solo **restablece los datos de Android** si fallan los dos primeros pasos (se conserva la lista de aplicaciones y abrirlas las reinstala automáticamente, pero se pierden la sesión y los registros propios de las aplicaciones).
 
-> 关于「提高安卓版本」：这次没有换镜像。原因是换镜像要让所有用户重新下载 1.5 GB，
-> 而实测问题的根子在**模拟器 Wi-Fi 关联慢/偶发不关联**，不在 Android 版本本身；
-> 用「等待 + 冷启动自愈」能在不增体积的前提下覆盖同样场景。若后续证明某版本镜像更稳，
-> 再单独发版迁移。
+> Sobre «subir la versión de Android»: esta vez no se ha cambiado la imagen. El motivo es que cambiarla obligaría a todos los usuarios a volver a descargar 1,5 GB, y en las pruebas la raíz del problema está en **la asociación del Wi-Fi del emulador, que es lenta o a veces no se produce**, no en la versión de Android en sí; «esperar + autosanación con arranque en frío» cubre el mismo escenario sin aumentar el tamaño. Si más adelante se demuestra que la imagen de una versión determinada es más estable, se publicará una versión aparte para migrar.
 
-## 三、CI：Gitee 同步的 token 已配好
+## 3. CI: el token para sincronizar Gitee ya está configurado
 
-GitHub 仓库的 Actions secret `GITEE_TOKEN` 已写入，以后打 `v*` 标签发布时，
-Release 工作流会自动把便携版同步到 Gitee，不用再手动跑脚本。
+El secreto de Actions `GITEE_TOKEN` del repositorio de GitHub ya está dado de alta. En adelante, al publicar con una etiqueta `v*`, el flujo de Release sincronizará automáticamente la versión portable a Gitee, sin necesidad de ejecutar el script a mano.
 
-## 四、实测
+## 4. Pruebas reales
 
-- `npm test`：**113 项全部通过**（8 + 25 + 80）。
-- 关闭窗口后 `pidof com.phoenix.read` 为空（应用真正退出）。
-- 网络就绪日志：`虚拟机网络就绪（10.0.2.16）`，随后红果首页正常渲染。
+- `npm test`: **113 pruebas, todas superadas** (8 + 25 + 80).
+- Tras cerrar la ventana, `pidof com.phoenix.read` está vacío (la aplicación realmente ha salido).
+- Registro de red lista: `máquina virtual en red lista (10.0.2.16)`, y a continuación la portada de Hongguo se renderiza con normalidad.
 
-## 五、升级方式
+## 5. Cómo actualizar
 
-- 便携版：解压覆盖，数据目录（默认 `%APPDATA%\apkstart`）保持不变。
-- 安装版：直接安装覆盖。
+- Versión portable: descomprime y sobrescribe; el directorio de datos (por defecto `%APPDATA%\apkstart`) se mantiene igual.
+- Versión instalada: instala directamente para sobrescribir.

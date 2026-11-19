@@ -1,399 +1,398 @@
-# ApkStart 代码走读（接手开发用）
+# Recorrido del código de ApkBuddyStart (para continuar el desarrollo)
 
-> 面向「要在本项目上继续写代码」的工程师。目标不是复述 README，而是回答三个问题：
-> **代码分成哪几层、每个关键动作真实走了哪条链路、改哪里最容易踩坑**。
+> Dirigido a ingenieros que vayan a **seguir escribiendo código en este proyecto**. El objetivo no es repetir el README, sino responder tres preguntas:
+> **en qué capas se divide el código, qué cadena recorre realmente cada acción clave y dónde es más fácil tropezar al hacer cambios**.
 >
-> 生成时间：2026-11-14 · 对应版本 **v0.3.5**（基于 commit `e1db34b` 的 v0.3.4 继续开发）· 仓库 `RoutineMiku/apkstart`
-> 走读基线：`src/**` 共 41 个文件、约 14,845 行（js/html/css/ps1），`npm test` = **70 通过 / 0 失败**。
+> Fecha de generación: 2026-11-14 · Versión correspondiente **v0.3.5** (desarrollo continuado sobre v0.3.4 del commit `e1db34b`) · Repositorio `RoutineMiku/apkstart`
+> Línea base del recorrido: `src/**`, 41 archivos y unas 14.845 líneas (js/html/css/ps1); `npm test` = **70 pasan / 0 fallan**.
 >
-> **怎么读这套文档**
-> - 先读本文（总览 + 关键调用链 + 问题地图，约 360 行）；
-> - 要改「装包 / 解析 / 图标 / 快捷方式」→ `CODE-WALKTHROUGH-PARSE.md`；
-> - 要改「下载 / 部署 / 换源 / 在线更新 / 路径规则」→ `CODE-WALKTHROUGH-RUNTIME.md`；
-> - 要改「开机 / 窗口嵌入 / 鼠标键位」→ 本文 2.3~2.6 + `docs/ARCHITECTURE.md`。
+> **Cómo leer este conjunto de documentos**
+> - Empieza por este archivo (visión general + cadenas de llamadas clave + mapa de problemas, unas 360 líneas);
+> - para cambiar «instalación / análisis / iconos / accesos directos» → `CODE-WALKTHROUGH-PARSE.md`;
+> - para cambiar «descarga / despliegue / cambio de fuente / actualización en línea / reglas de rutas» → `CODE-WALKTHROUGH-RUNTIME.md`;
+> - para cambiar «arranque / incrustación de ventana / botones del ratón» → secciones 2.3~2.6 de este archivo + `docs/ARCHITECTURE.md`.
 
 ---
 
-## 0. 一页纸速览
+## 0. Resumen de una página
 
-| 问题 | 答案 |
+| Pregunta | Respuesta |
 |---|---|
-| 这是什么 | Windows 上的「安卓应用运行器」：Electron 壳 + 自带 Android 运行时（Google Android Emulator / QEMU 全系统虚拟化），把每个安卓应用装成桌面图标、开成独立 Windows 窗口 |
-| 一句话架构 | **Electron 主进程做编排，`core/*` 做领域能力，PowerShell 窗口代理做 Win32 脏活，渲染层只做 UI** |
-| 不做什么 | 不自己写 hypervisor、不做 Linux 内核/GPU 转译、不挂载 NTFS（共享目录用同步代替）、不依赖第三方模拟器 |
-| 关键依赖 | 运行时零第三方依赖手写解析（zip/AXML/ARSC/PNG/ICO）；仅 `@napi-rs/lzma`（解 .xz 镜像）+ Electron |
-| 数据在哪 | 代码 `%APPDATA%\apkstart`（settings.json / apps.json / icons / apks / logs）、运行时 `runtime.dir`（可换盘）、AVD `runtime.avdDir`（可换盘） |
-| 版本从哪来 | `package.json:version`，`app.getVersion()` 读它；CI 按 tag `v*` 触发发版 |
+| Qué es | Un «ejecutor de aplicaciones Android» para Windows: carcasa Electron + ejecución propia de Android (Google Android Emulator / virtualización completa con QEMU), que instala cada app Android como un icono de escritorio y la abre en una ventana independiente de Windows |
+| Arquitectura en una frase | **El proceso principal de Electron orquesta, `core/*` aporta las capacidades de dominio, el agente de ventanas PowerShell hace el trabajo sucio de Win32 y la capa de renderizado solo hace la UI** |
+| Qué no hace | No escribe su propio hipervisor, no hace traducción de kernel Linux/GPU, no monta NTFS (la carpeta compartida usa sincronización en su lugar) y no depende de emuladores de terceros |
+| Dependencia clave | Análisis escrito a mano, sin dependencias de terceros en la ejecución (zip/AXML/ARSC/PNG/ICO); solo `@napi-rs/lzma` (para descomprimir imágenes .xz) y Electron |
+| Dónde están los datos | Código en `%APPDATA%\apkstart` (settings.json / apps.json / icons / apks / logs), ejecución en `runtime.dir` (se puede cambiar de unidad), AVD en `runtime.avdDir` (se puede cambiar de unidad) |
+| De dónde sale la versión | `package.json:version`, que lee `app.getVersion()`; CI publica al recibir tags `v*` |
 
 ---
 
-## 1. 仓库结构
+## 1. Estructura del repositorio
 
 ```
 apkstart/
 ├─ src/
-│  ├─ main.js                1790 行  Electron 主进程：窗口/托盘/单实例/CLI/IPC/生命周期
-│  ├─ preload.js              130 行  contextBridge 安全桥（渲染层唯一入口）
-│  ├─ ui/                            渲染层（原生 HTML/CSS/JS，无框架）
-│  │  ├─ index.html / app.js         主界面（应用列表 + 设置弹窗），app.js 1490 行
-│  │  ├─ shell.html / shell.js/css   应用窗口外壳（38px 标题栏 + 启动遮罩）
-│  │  └─ assets/                     logo / appicon.ico / 二维码
-│  └─ core/                          领域层（无 Electron 依赖的尽量纯 Node）
-│     ├─ 编排    installer.js engine.js container.js
-│     ├─ 运行时  emulator.js provision.js userdata.js doctor.js layers.js
-│     ├─ 设备    adb.js android.js sharer.js notify.js display.js
-│     ├─ 窗口    appwin.js agent.js win/agent.ps1 win/priority.ps1 windowctl.js pointer.js
-│     ├─ 解析    zip.js axml.js arsc.js apk.js png.js shortcut.js assoc.js
-│     └─ 下载/更新 download.js sources.js updater.js store.js logfile.js
-├─ build/                    打包流水线（pack.js / prepare-runtime.js / slim-runtime.js / zip.js / seed/）
-├─ test/                     run-tests.js(8) + engine-test.js(11) + auto-test.js(53) + 一堆实机探针脚本
-├─ tools/                    发布与实机检查脚本（publish-gitee.js、check-*.js、e2e-boot.js）
-├─ docs/                     ARCHITECTURE.md、images/、promo/、本文
-├─ engine/                   运行时下载缓存（gitignored，只有 README）
-└─ .github/workflows/        ci.yml（双 Node 测试）、release.yml（便携版 + 完整版 + Gitee 同步）
+│  ├─ main.js                1790 líneas  Proceso principal de Electron: ventanas/bandeja/instancia única/CLI/IPC/ciclo de vida
+│  ├─ preload.js              130 líneas  Puente seguro contextBridge (única entrada de la capa de renderizado)
+│  ├─ ui/                            Capa de renderizado (HTML/CSS/JS nativo, sin framework)
+│  │  ├─ index.html / app.js         Interfaz principal (lista de apps + diálogo de ajustes), app.js 1490 líneas
+│  │  ├─ shell.html / shell.js/css   Cáscara de la ventana de la app (barra de título de 38 px + máscara de arranque)
+│  │  └─ assets/                     logo / appicon.ico / códigos QR
+│  └─ core/                           Capa de dominio (lo más posible en Node puro, sin dependencia de Electron)
+│     ├─ Orquestación   installer.js engine.js container.js
+│     ├─ Ejecución      emulator.js provision.js userdata.js doctor.js layers.js
+│     ├─ Dispositivo    adb.js android.js sharer.js notify.js display.js
+│     ├─ Ventana        appwin.js agent.js win/agent.ps1 win/priority.ps1 windowctl.js pointer.js
+│     ├─ Análisis       zip.js axml.js arsc.js apk.js png.js shortcut.js assoc.js
+│     └─ Descarga/actualización download.js sources.js updater.js store.js logfile.js
+├─ build/                    Canalización de empaquetado (pack.js / prepare-runtime.js / slim-runtime.js / zip.js / seed/)
+├─ test/                     run-tests.js(8) + engine-test.js(11) + auto-test.js(53) + un montón de sondas de equipo real
+├─ tools/                    Scripts de publicación y comprobación en equipo real (publish-gitee.js, check-*.js, e2e-boot.js)
+├─ docs/                     ARCHITECTURE.md, images/, promo/, este archivo
+├─ engine/                   Caché de descarga de la ejecución (ignorada por git, solo README)
+└─ .github/workflows/        ci.yml (pruebas con dos versiones de Node), release.yml (portátil + completa + sincronización Gitee)
 ```
 
-**分层调用方向**（只允许上层依赖下层）：
+**Dirección de las llamadas entre capas** (solo se permite que una capa dependa de la inferior):
 
 ```
 ui/*  ──preload(contextBridge)──▶  main.js
 main.js ──▶ installer.js / engine.js / appwin.js / updater.js / sharer.js …
 installer.js ──▶ apk.js ──▶ zip.js / axml.js / arsc.js / png.js / shortcut.js
-engine.js ──▶ emulator.js ──▶ provision.js(路径/磁盘守卫) + userdata.js(ext4) + adb.js
-appwin.js ──▶ agent.js ──TCP JSON──▶ win/agent.ps1(C# P/Invoke)
-所有层 ──▶ store.js（设置/清单持久化）
+engine.js ──▶ emulator.js ──▶ provision.js (guardas de ruta/disco) + userdata.js (ext4) + adb.js
+appwin.js ──▶ agent.js ──TCP JSON──▶ win/agent.ps1 (P/Invoke de C#)
+Todas las capas ──▶ store.js (persistencia de ajustes y manifiesto)
 ```
 
 ---
 
-## 2. 关键调用链（改代码前先看这几条）
+## 2. Cadenas de llamadas clave (míralas antes de tocar código)
 
-### 2.1 双击 APK → 装好并生成桌面图标
+### 2.1 Doble clic en APK → instalado y con icono en el escritorio
 
 ```
-Explorer 双击 .apk
- → HKCU\Software\Classes\ApkStart.apk (assoc.js 注册，免管理员)
- → ApkStart.exe "C:\x\a.apk"
+Explorer: doble clic en .apk
+ → HKCU\Software\Classes\ApkBuddyStart.apk (registrado por assoc.js, sin administrador)
+ → ApkBuddyStart.exe "C:\x\a.apk"
  → main.js parseArgs() → runInstall(filePath)              main.js:537
-     ├ 防重入：installBusy（连点/拖多次只跑一次）           main.js:540
+     ├ Anti-reentrada: installBusy (varios clics/arrastres solo ejecutan una vez)  main.js:540
      ├ installer.install()                                 installer.js:141
-     │   ├ /\.(apks|xapk)$/ → parseBundle()（解分片到临时目录）installer.js:26
+     │   ├ /\.(apks|xapk)$/ → parseBundle() (extrae fragmentos a un directorio temporal) installer.js:26
      │   ├ parseApk()  →  zip.js → axml.js → arsc.js        apk.js:75
-     │   ├ isArmOnly(meta) && 无 Play 镜像 →
+     │   ├ isArmOnly(meta) && sin imagen Play →
      │   │     ensureCompatImage() + switchToCompat()        installer.js:159
-     │   └ runtime.ensure()  → 见 2.3
+     │   └ runtime.ensure()  → véase 2.3
      ├ installer.finishInstall()                            installer.js:179
-     │   ├ emulator.invalidateSnapshot()（装完旧快照作废）
-     │   ├ adb install -r -g -t（失败 NO_MATCHING_ABIS 自动切兼容镜像重试）
-     │   ├ 图标落盘 PNG + iconToIco()（WebP 交给渲染进程解码） main.js:213 decodeIcon
-     │   ├ 备份 APK 到 apks/（日后自动重装用）
-     │   ├ resolveLauncher()：以系统解析的 LAUNCHER 为准    adb.js
+     │   ├ emulator.invalidateSnapshot() (la instantánea antigua deja de valer tras instalar)
+     │   ├ adb install -r -g -t (si falla NO_MATCHING_ABIS, cambia a imagen compatible y reintenta)
+     │   ├ Guardar icono en PNG + iconToIco() (WebP lo decodifica el proceso de renderizado) main.js:213 decodeIcon
+     │   ├ Copia de seguridad del APK en apks/ (para reinstalar automáticamente en el futuro)
+     │   ├ resolveLauncher(): se guía por el LAUNCHER que resuelve el sistema    adb.js
      │   ├ store.upsertApp()
-     │   └ createShortcut()：桌面 + 开始菜单两份 .lnk        installer.js:286
-     └ 通知 / 刷新资源管理器图标缓存
+     │   └ createShortcut(): dos .lnk, escritorio + menú Inicio                  installer.js:286
+     └ Notificación / actualizar la caché de iconos del Explorador
 ```
 
-**为什么 `resolveLauncher` 必须在装完后跑**：APK 里解析到的「主 Activity」经常不是真正的 LAUNCHER（红果短剧是 `SplashActivity` 而不是 `MainFragmentActivity`），用错入口会跳过初始化 → 3~8 秒后闪退。见 `docs/ARCHITECTURE.md`。
+**Por qué `resolveLauncher` debe ejecutarse después de instalar**: la «Activity principal» que se analiza del APK suele no ser el LAUNCHER real (Hongguo Short Drama tiene `SplashActivity` y no `MainFragmentActivity`); usar elpunto de entrada equivocado se salta la inicialización y la app se cierra a los 3~8 s. Véase `docs/ARCHITECTURE.md`.
 
-### 2.2 双击桌面图标 → 应用窗口出现
+### 2.2 Doble clic en el icono del escritorio → aparece la ventana de la app
 
 ```
-<应用名>.lnk → ApkStart.exe --launch <pkg>（lnk 由 shortcut.js 写，带 AppUserModelId）
- → main.js parseArgs() 只认 com.foo.bar 形式              main.js:201
- → 已有实例？second-instance → runLaunch()                 main.js:1477
- → runLaunch(pkg)                                          main.js:606
-     ├ openAppWindow()：立刻开一个只有标题栏的窗口 + 启动遮罩 main.js:286
-     ├ armAgent()：先给窗口代理下发 scope 并开「常驻压制」  main.js:1547
-     ├ installer.launch()                                  installer.js:385
-     │   ├ runtime.ensure()（见 2.3）
-     │   ├ beforeStart → prepareForeground()（沉浸式/关动画/收锁屏）
-     │   ├ 应用不在当前运行时里？从备份 APK 自动重装        installer.js:404
+<nombre-de-app>.lnk → ApkBuddyStart.exe --launch <pkg> (el lnk lo escribe shortcut.js, con AppUserModelId)
+ → main.js parseArgs() solo acepta la forma com.foo.bar                    main.js:201
+ → ¿Instancia existente? second-instance → runLaunch()                     main.js:1477
+ → runLaunch(pkg)                                                           main.js:606
+     ├ openAppWindow(): abre enseguida una ventana solo con barra de título + máscara de arranque main.js:286
+     ├ armAgent(): primero envía el scope al agente de ventanas y activa la «supresión permanente» main.js:1547
+     ├ installer.launch()                                                  installer.js:385
+     │   ├ runtime.ensure() (véase 2.3)
+     │   ├ beforeStart → prepareForeground() (inmersivo/desactivar animaciones/ocultar bloqueo)
+     │   ├ ¿La app no está en la ejecución actual? Se reinstala desde el APK de respaldo installer.js:404
      │   ├ grantRuntimePermissions()
-     │   └ startApp() + staysAlive()（25s 窗口 / 连续存活 4s）
-     │        失败重试 3 次 → pm clear + 补权限 → 再拉一次
-     │        崩溃带 evidence(APP_CRASHED) → 自动切兼容镜像重来
-     ├ appWin.embed()：SetParent 把模拟器窗口嵌进来        appwin.js:213
-     └ runtime.beginApp(pkg)：停其他 App、提优先级、开同步/通知  engine.js:901
+     │   └ startApp() + staysAlive() (ventana de 25 s / supervivencia continua de 4 s)
+     │        Fallo: reintenta 3 veces → pm clear + conceder permisos → arrancar otra vez
+     │        Fallo con evidence(APP_CRASHED) → cambiar a imagen compatible y repetir
+     ├ appWin.embed(): SetParent incrusta la ventana del emulador          appwin.js:213
+     └ runtime.beginApp(pkg): detiene otras apps, sube prioridad, activa sincronización/notificaciones engine.js:901
 ```
 
-**嵌入不是把画面「投屏」**，而是把模拟器自己的 Qt 子窗口 `SetParent` 到 Electron 宿主窗口，再按客户区矩形 `SetWindowPos`。因此：
-- 画面是原生渲染、原生 60fps，鼠标键盘直接进 guest；
-- 必须 `app.disableHardwareAcceleration()`，否则 Chromium 的 DirectComposition 图层会盖在子窗口上（`main.js:72`）；
-- 关窗口时必须**先 park（SetParent(NULL)+SW_HIDE）再 destroy 宿主**，否则 Windows 会把子窗口重挂到桌面（`appwin.js:318` / `agent.ps1:990`）。
+**La incrustación no es «emitir la imagen»**, sino hacer `SetParent` de la ventana hija Qt del emulador a la ventana host de Electron y después `SetWindowPos` según el rectángulo del área cliente. Por tanto:
+- La imagen se renderiza de forma nativa a 60 fps nativos, y el ratón y el teclado van directos al guest;
+- hay que llamar a `app.disableHardwareAcceleration()`, o la capa DirectComposition de Chromium se superpondrá a la ventana hija (`main.js:72`);
+- al cerrar la ventana hay que **hacer primero park (SetParent(NULL)+SW_HIDE) y después destruir la ventana host**, o Windows volverá a colgar la ventana hija en el escritorio (`appwin.js:318` / `agent.ps1:990`).
 
-### 2.3 `runtime.ensure()`：一次开机到底做了什么
+### 2.3 `runtime.ensure()`: qué hace exactamente un arranque
 
-`engine.js:796 _ensureInner()`，按顺序尝试，**任何一步成功就返回**：
+`engine.js:796 _ensureInner()` prueba en orden, **y cualquier paso que tenga éxito devuelve el resultado**:
 
-1. `client.isOnline()` → 已有设备在线：直接 `prepare()` 复用；
-2. `adoptExisting()`（`engine.js:708`）→ 扫还活着的模拟器端口（`tasklist` + `netstat` 找 qemu 的监听端口，不靠猜 5554），`adb kill-server` 后逐个 `connect` + `getprop sys.boot_completed`，能接管的直接复用；
-3. `adb devices` 里已有 `emulator-NNNN` → 复用；
-4. 进程在但设备离线 → `emulator.stop()` 后重来；
-5. 唯一路径（0.5.6 起没有第三方底座，也没有 attach 模式）：
-   - `provisioner.materializeImages()` 展开 `.xz/.gz` 系统镜像（已展开秒过）；
-   - `checkEnv()` 判断 adb/emulator/sysimg 是否齐备；
-   - `killOrphanEmulators()` 清掉残留 qemu（否则 AVD 锁 FATAL）；
-   - `bootEmulator()` → `emulator.start()`（见 2.4）→ 成功后 `prepare()`（ensureFreeform + 看门狗）→ 20s 后空闲存快照。
+1. `client.isOnline()` → ya hay un dispositivo en línea: se reutiliza directamente con `prepare()`;
+2. `adoptExisting()` (`engine.js:708`) → busca puertos de emuladores aún vivos (`tasklist` + `netstat` para encontrar el puerto de escucha de qemu, sin adivinar 5554); tras `adb kill-server`, conecta uno por uno con `connect` + `getprop sys.boot_completed` y reutiliza los que se puedan tomar;
+3. Ya hay un `emulator-NNNN` en `adb devices` → se reutiliza;
+4. El proceso existe pero el dispositivo está sin conexión → `emulator.stop()` y se empieza de nuevo;
+5. Ruta única (desde 0.5.6 no hay bases de terceros ni modo attach):
+   - `provisioner.materializeImages()` despliega las imágenes del sistema `.xz/.gz` (si ya están desplegadas, pasa al instante);
+   - `checkEnv()` comprueba que adb/emulator/sysimg estén completos;
+   - `killOrphanEmulators()` limpia los qemu residuales (si no, el bloqueo del AVD es FATAL);
+   - `bootEmulator()` → `emulator.start()` (véase 2.4) → si tiene éxito, `prepare()` (ensureFreeform + perro guardián) → guarda una instantánea con el equipo inactivo a los 20 s.
 
-`ensure()` 外层是**幂等 Promise**（`engine.js:787`）：预热和用户点击同时发生时只开一台机器，避免抢 AVD 锁。
+La capa externa de `ensure()` es una **Promise idempotente** (`engine.js:787`): si el precalentamiento y un clic del usuario ocurren a la vez, solo se arranca una máquina, evitando pelear por el bloqueo del AVD.
 
-### 2.4 `emulator.start()`：自动降级的开机循环
+### 2.4 `emulator.start()`: el bucle de arranque con degradación automática
 
-`emulator.js` 的核心是「`doctor.planVariants()` 生成最多 4 组参数 → 逐组尝试 → 每组用 probe 判定 → 进程崩溃/致命日志就换下一组」：
+El núcleo de `emulator.js` es «`doctor.planVariants()` genera hasta 4 juegos de parámetros → se prueba cada uno → una sonda evalúa cada juego → si el proceso se cae o aparece un registro fatal, se pasa al siguiente»:
 
-- 参数由 `doctor.chooseProfile()` 推导（内存/核数/LCD/GPU/data 分区/端口），`liteMode` 会把 vCPU 收到物理核的 1/4（2~3）；
-- `gpuMode=auto` 按 emulator 版本挑后端（37.x 用 `host`，老版本 `swiftshader_indirect`），保底 `software`；
-- `badGpu` 记忆「上次拉起就崩」的后端（key 带 emulator 版本，升级自动失效）；
-- 每轮 probe 只发**一条** adb 命令（`getprop sys.boot_completed; pm path android`），连错 6 轮自动 `resetAdbServer()` 自愈；
-- **`/data` 分区是 ApkStart 自己造的**（`userdata.js` + `ensureDataPartition()`，`emulator.js:348`）：官方镜像里的 `userdata.img` 只是 1MB 全零占位，直接拉 `emulator.exe` 会跳过格式化 → guest 掉进 recovery 重启循环。所以首次启动会手写 4KB block 的 ext4（带 `FILETYPE|ENCRYPT`、`ext_attr`），再用自带的 `qemu-img resize` + `resize2fs` 撑到配置容量。
+- Los parámetros los deriva `doctor.chooseProfile()` (memoria/núcleos/LCD/GPU/partición de datos/puerto); `liteMode` reduce las vCPU a un cuarto de los núcleos físicos (2~3);
+- con `gpuMode=auto` se elige el backend según la versión del emulator (37.x usa `host`; las versiones antiguas, `swiftshader_indirect`), con `software` como último recurso;
+- `badGpu` recuerda el backend que «se cayó al arrancar» (la clave incluye la versión del emulator y caduca automáticamente al actualizar);
+- cada ronda de sonda envía **una sola** orden adb (`getprop sys.boot_completed; pm path android`); 6 rondas seguidas de error llaman automáticamente a `resetAdbServer()` para autorrecuperarse;
+- **La partición `/data` la crea el propio ApkBuddyStart** (`userdata.js` + `ensureDataPartition()`, `emulator.js:348`): el `userdata.img` de la imagen oficial es solo un marcador de posición de 1 MB lleno de ceros; arrancar `emulator.exe` directamente omite el formateo y el guest cae en un bucle de reinicio en recovery. Por eso el primer inicio escribe a mano un ext4 con bloques de 4 KB (con `FILETYPE|ENCRYPT` y `ext_attr`) y luego lo amplía con el `qemu-img resize` + `resize2fs` incluidos hasta la capacidad configurada.
 
-### 2.5 存储/路径规则（换盘相关 issue 都在这）
+### 2.5 Reglas de almacenamiento y rutas (todos los issues de cambio de unidad están aquí)
 
-| 概念 | 代码位置 | 默认 | 可换盘 |
+| Concepto | Ubicación en el código | Valor predeterminado | ¿Se puede cambiar de unidad? |
 |---|---|---|---|
-| 代码数据目录 `DATA_DIR` | `store.js:10` | `%APPDATA%\apkstart` | 否（缓存会在 C 盘紧张时被 `relocateUserDataIfCrowded()` 挪到 AVD 盘，`main.js:50`） |
-| 运行时根 `paths().root` | `provision.js` | `DATA_DIR\runtime` | 是：`runtime.dir` |
-| AVD 目录 `paths().avdHome` | `provision.js` | `DATA_DIR\avd` | 是：`runtime.avdDir` |
-| 系统镜像展开目录 `paths().sysImgRoot` | `provision.js` | `DATA_DIR\system-images` | 跟随运行时根（**必须与 `materializeImages` 的 destRoot 同一套规则**，曾因此 C 盘存两份） |
-| 共享目录 | `store.js:99` | `%USERPROFILE%\ApkStartShared` | 是：`sharedDir` |
+| Directorio de datos del código `DATA_DIR` | `store.js:10` | `%APPDATA%\apkstart` | No (la caché se puede mover a la unidad del AVD con `relocateUserDataIfCrowded()` cuando C va justa, `main.js:50`) |
+| Raíz de la ejecución `paths().root` | `provision.js` | `DATA_DIR\runtime` | Sí: `runtime.dir` |
+| Directorio del AVD `paths().avdHome` | `provision.js` | `DATA_DIR\avd` | Sí: `runtime.avdDir` |
+| Directorio de despliegue de la imagen del sistema `paths().sysImgRoot` | `provision.js` | `DATA_DIR\system-images` | Sigue a la raíz de la ejecución (**debe usar exactamente el mismo conjunto de reglas que el destRoot de `materializeImages`; antes se guardaron dos copias en C por esto) |
+| Directorio compartido | `store.js:99` | `%USERPROFILE%\ApkBuddyStartShared` | Sí: `sharedDir` |
 
-### 2.6 窗口代理（`agent.ps1`）：为什么要有它
+### 2.6 El agente de ventanas (`agent.ps1`): por qué existe
 
-Node 的 `windowsHide` 管不到 emulator 自己 detached 出来的 `qemu` / `netsimd` 控制台窗口（窗口属于 `conhost.exe`，pid 对不上）。所以有一个**常驻 PowerShell 进程**内嵌 C# + P/Invoke，通过本机 TCP 一行一个 JSON 指挥：
+La opción `windowsHide` de Node no controla las ventanas de consola `qemu` / `netsimd` que el propio emulator crea desacopladas (la ventana pertenece a `conhost.exe` y el pid no coincide). Por eso hay un **proceso PowerShell permanente** con C# + P/Invoke incrustado, al que se dan órdenes mediante JSON de una línea por TCP local:
 
-| 命令 | 作用 |
+| Orden | Función |
 |---|---|
-| `scope {dirs, pid}` | 声明「哪些目录里的进程才算我们的」+ 主进程 pid。**没有 scope 就一个窗口都不碰** |
-| `embed {host,x,y,w,h}` | `SetParent` + `SetWindowPos` 嵌进宿主窗口；宿主 pid 不是主进程就拒绝（`host-not-ours`） |
-| `fit` | 跟随宿主窗口 resize/move 重排子窗口 |
-| `park` | 摘下 + 藏好（宿主销毁前必须先做） |
-| `boothide on/off` | 常驻压制：周期性把模拟器主窗/工具栏/控制台黑窗 `ShowWindow(0)`，跳过已嵌入的那个 |
-| `hook on/off {right,wheel,side}` | 全局鼠标钩子（右键返回 / 滚轮合并 / 侧键），**只在应用窗口前台装，失焦即卸** |
-| `rotate` / `hide` / `show` / `probe` / `windows` / `consoles` / `quit` | 其余 |
+| `scope {dirs, pid}` | Declara «qué procesos de qué directorios son nuestros» + el pid del proceso principal. **Sin scope, no se toca ninguna ventana** |
+| `embed {host,x,y,w,h}` | `SetParent` + `SetWindowPos` para incrustar en la ventana host; si el pid del host no es el del proceso principal, se rechaza (`host-not-ours`) |
+| `fit` | Reordena la ventana hija siguiendo el resize/move de la ventana host |
+| `park` | La desprende y la esconde (hay que hacerlo antes de destruir el host) |
+| `boothide on/off` | Supresión permanente: aplica `ShowWindow(0)` periódicamente a la ventana principal, la barra de herramientas y la ventana negra de consola del emulador, omitiendo la que ya está incrustada |
+| `hook on/off {right,wheel,side}` | Hook global de ratón (volver con clic derecho / agrupar rueda / botones laterales); **solo se instala cuando la ventana de la app está en primer plano y se desinstala al perder el foco** |
+| `rotate` / `hide` / `show` / `probe` / `windows` / `consoles` / `quit` | El resto |
 
-**v0.3.4 的核心教训：类名不是身份，进程路径才是。** 旧版用 `QWindowIcon` 认窗口，而微信 4.x 就是 Qt6、类名一模一样 → 「打开 ApkStart，微信窗口消失」。现在所有判定先过 `IsOurs(pid)`（`agent.ps1:168`），控制台黑窗走 conhost 父进程链 + 标题含 scope 目录（`agent.ps1:219`）。
+**Lección central de v0.3.4: el nombre de clase no es identidad, lo es la ruta del proceso.** Las versiones antiguas identificaban la ventana por `QWindowIcon`, y WeChat 4.x también es Qt6 con exactamente el mismo nombre de clase → «abres ApkBuddyStart y desaparece la ventana de WeChat». Ahora todas las decisiones pasan primero por `IsOurs(pid)` (`agent.ps1:168`); la ventana negra de consola se gestiona por la cadena de procesos padres de conhost + un título que contiene el directorio del scope (`agent.ps1:219`).
 
 ---
 
-## 3. 各层职责与关键接口
+## 3. Responsabilidades e interfaces clave de cada capa
 
-### 3.1 `main.js`（主进程编排）
+### 3.1 `main.js` (orquestación del proceso principal)
 
-| 区块 | 行 | 说明 |
+| Bloque | Líneas | Descripción |
 |---|---|---|
-| 启动前决策 | 40-72 | `relocateUserDataIfCrowded()`（C 盘紧张挪缓存）、`disableHardwareAcceleration()` |
-| 完整版自动接管 | 97-171 | exe 旁边有 `runtime/` + 任意完整镜像 → 自动写 `runtime.dir`、开兼容模式；要求 `sameTree`（只认本次 EXE 目录树下），防便携版移动后继续用旧包 |
-| 单实例 + 参数 | 196-209, 1473-1482 | `--launch <pkg>` / `<path.apk>` / `--autostart`；second-instance 分发给已运行实例 |
-| 托盘 | 468-530 | 前 8 个应用直达、全屏切换、重建快捷方式、检查更新、退出 |
-| 安装 | 537-573 | `runInstall()`：防重入 + 错误只弹一次系统通知 |
-| 启动 | 606-662 | `runLaunch()`：见 2.2 |
-| 更新 | 579-604 | `runUpdate()`：`updater.prepare()` → `apply()` → 退出让脚本接管 |
-| IPC | 702-1469 | 约 120 个 channel，按域分组（apps/apk/settings/display/runtime/provision/doctor/android/update/window/shell） |
-| 生命周期 | 1484-1790 | `whenReady` 里装配所有对象；`before-quit` 分两段退出（先 park 窗口再真正退出） |
+| Decisiones previas al arranque | 40-72 | `relocateUserDataIfCrowded()` (mueve la caché si C va justa), `disableHardwareAcceleration()` |
+| Toma automática de la versión completa | 97-171 | Si junto al exe hay `runtime/` y cualquier imagen completa → escribe `runtime.dir`, activa el modo compatible; exige `sameTree` (solo reconoce árboles bajo el directorio de este EXE) para que una versión portátil movida no siga usando el paquete antiguo |
+| Instancia única + parámetros | 196-209, 1473-1482 | `--launch <pkg>` / `<path.apk>` / `--autostart`; second-instance reparte a la instancia ya en ejecución |
+| Bandeja | 468-530 | Acceso directo a las 8 primeras apps, alternar pantalla completa, reconstruir accesos directos, comprobar actualizaciones, salir |
+| Instalación | 537-573 | `runInstall()`: anti-reentrada + el error solo muestra una notificación del sistema |
+| Arranque | 606-662 | `runLaunch()`: véase 2.2 |
+| Actualización | 579-604 | `runUpdate()`: `updater.prepare()` → `apply()` → sale para que el script tome el control |
+| IPC | 702-1469 | Unos 120 channels, agrupados por dominio (apps/apk/settings/display/runtime/provision/doctor/android/update/window/shell) |
+| Ciclo de vida | 1484-1790 | `whenReady` ensambla todos los objetos; `before-quit` sale en dos fases (primero park de ventanas y luego salida real) |
 
-**IPC 命名约定**：`域:动作`；渲染层只能通过 `preload.js` 暴露的 `window.apkstart.*` 调用，事件推送在白名单里（`preload.js:120`）。
+**Convención de nombres IPC**: `dominio:acción`; la capa de renderizado solo puede llamar a `window.apkstart.*` expuesto por `preload.js`, y los eventos push están en lista blanca (`preload.js:120`).
 
-### 3.2 `core/engine.js`（运行时生命周期）
+### 3.2 `core/engine.js` (ciclo de vida de la ejecución)
 
-导出 `class Runtime`：`ensure / prewarm / boot / stop / adoptExisting / beginApp / endApp / status / diagnostics / cleanup / dispose`。
-关键不变量：
+Exporta `class Runtime`: `ensure / prewarm / boot / stop / adoptExisting / beginApp / endApp / status / diagnostics / cleanup / dispose`.
+Invariantes clave:
 
-- `ensure()` 与 `prewarm()` 都是幂等 Promise；
-- `dispose()` **绝不强杀 qemu**（强杀会截断正在写的 quickboot 快照 → 下次只能冷启动）；
-- 接管来的实例没有本地 proc 句柄，`vmRunning` 必须同时看 `adb isOnline()`，否则看门狗永远回收不掉；
-- 闲置回收看门狗 60s 一轮：`idleShutdownMinutes` 到期且没有活跃 App 才停。
+- `ensure()` y `prewarm()` son Promises idempotentes;
+- `dispose()` **nunca mata qemu a la fuerza** (matarlo a la fuerza trunca la instantánea quickboot que se está escribiendo → el próximo arranque será en frío);
+- una instancia adoptada no tiene handle de proceso local, así que `vmRunning` debe mirar también `adb isOnline()`, o el perro guardián nunca podrá reciclarla;
+- el perro guardián de reciclado por inactividad ronda cada 60 s: solo para si vence `idleShutdownMinutes` y no hay ninguna app activa.
 
-### 3.3 `core/emulator.js`（模拟器适配）
+### 3.3 `core/emulator.js` (adaptación del emulador)
 
-职责：AVD 创建/参数生成/进程拉起/probe/快照/优先级/端口/孤儿清理/数据分区。对外：`start/stop/running/scheduleSnapshotSave/saveSnapshotNow/cancelSnapshotSave/invalidateSnapshot/ensureDataPartition/resizeDataPartition/dataInfo/setPriority/killOrphanProcesses/resetAdbServer/versions`。
-坑点集中在文件头注释（`emulator.js:330-347`）：block size 必须 4096、`encrypt` 位必须最后补、`ram.bin` vs `ram.img`、`emulator.exe` 只是启动器。
+Responsabilidades: crear el AVD / generar parámetros / lanzar el proceso / sonda / instantáneas / prioridad / puertos / limpieza de huérfanos / partición de datos. Interfaz pública: `start/stop/running/scheduleSnapshotSave/saveSnapshotNow/cancelSnapshotSave/invalidateSnapshot/ensureDataPartition/resizeDataPartition/dataInfo/setPriority/killOrphanProcesses/resetAdbServer/versions`.
+Los puntos delicados están en los comentarios de la cabecera del archivo (`emulator.js:330-347`): el tamaño de bloque debe ser 4096, el bit `encrypt` se añade al final, `ram.bin` frente a `ram.img`, y `emulator.exe` es solo un lanzador.
 
-### 3.4 `core/adb.js`（设备操作）
+### 3.4 `core/adb.js` (operaciones con el dispositivo)
 
-`class AdbClient`：`isOnline/shell/exec/install/installMultiple/uninstall/startApp/forceStop/clearData/runningPackages/wmSize/setOrientation/keyBack/keyForward/input/prepareForeground/grantRuntimePermissions/dismissPermissionDialog/resolveLauncher/ensureFreeform/devices/connect/killServer`。
-性能关键：**常驻 `adb shell` 输入通道**（`input()` 用 `echo __APKSTART_<id>__` 做回包/背压），右键返回与滚轮不再每格 spawn 一个 adb 进程。
+`class AdbClient`: `isOnline/shell/exec/install/installMultiple/uninstall/startApp/forceStop/clearData/runningPackages/wmSize/setOrientation/keyBack/keyForward/input/prepareForeground/grantRuntimePermissions/dismissPermissionDialog/resolveLauncher/ensureFreeform/devices/connect/killServer`.
+Clave de rendimiento: **canal de entrada `adb shell` persistente** (`input()` usa `echo __APKSTART_<id>__` como respuesta y control de flujo), de modo que «volver con clic derecho» y la rueda ya no lanzan un proceso adb por cada muesca.
 
 ### 3.5 `core/installer.js`
 
-见 2.1。额外两个「自动修复」路径值得记住：`switchToCompat()`（切镜像后把已装应用从备份 APK 重灌回去）和 `ensureShortcuts()`（启动时补齐老版本漏建的图标/快捷方式）。
+Véase 2.1. Dos rutas de «autoreparación» que conviene recordar: `switchToCompat()` (tras cambiar de imagen, vuelve a instalar las apps ya instaladas desde sus APK de respaldo) y `ensureShortcuts()` (al arrancar completa los iconos/accesos directos que las versiones antiguas omitieron).
 
 ### 3.6 `src/ui/`
 
-- `app.js`：单文件状态机（`state` 对象 + 一堆 render 函数），没有框架；所有后端调用都 `await window.apkstart.xxx()`；
-- 安装进度：`installFiles()` 里 sticky toast + `install:progress` 事件，**失败时先 `off()` 再 `dismiss()`**（曾经的「失败信息一直循环」就是这个）；
-- `shell.html/js`：应用窗口外壳，只有旋转/最小化/最大化/关闭四个按钮 + 启动遮罩。
+- `app.js`: máquina de estados en un solo archivo (objeto `state` + un montón de funciones render), sin framework; todas las llamadas al backend son `await window.apkstart.xxx()`;
+- progreso de instalación: en `installFiles()`, toast sticky + evento `install:progress`; **en caso de error, primero `off()` y después `dismiss()`** (el antiguo «el mensaje de error no dejaba de repetirse» venía de ahí);
+- `shell.html/js`: cáscara de la ventana de la app, solo cuatro botones (girar/minimizar/maximizar/cerrar) + máscara de arranque.
 
-### 3.7 持久化 `core/store.js`
+### 3.7 Persistencia `core/store.js`
 
-`getSettings()` 每次 `deepMerge(DEFAULT_SETTINGS, 磁盘值)` 并**强制迁移**三项历史配置（`headless=false` / `hideAfterLaunch=false` / `freeform=false`）；
-`saveSettings()` 写 tmp + rename（原子写），并处理 `resourceMode` → `liteMode/priorityMode/renderSize` 的翻译。
-`apps.json` 是数组 `{ apps: [...] }`，`upsertApp` 按 `package` 合并。
+`getSettings()` hace cada vez `deepMerge(DEFAULT_SETTINGS, valor-en-disco)` y **migra forzosamente** tres ajustes históricos (`headless=false` / `hideAfterLaunch=false` / `freeform=false`);
+`saveSettings()` escribe tmp + rename (escritura atómica) y gestiona la traducción de `resourceMode` → `liteMode/priorityMode/renderSize`.
+`apps.json` es un array `{ apps: [...] }`, y `upsertApp` combina por `package`.
 
 ---
 
-## 4. 构建 / 发布流水线
+## 4. Canalización de compilación / publicación
 
-| 命令 | 脚本 | 产物 |
+| Comando | Script | Producto |
 |---|---|---|
-| `npm run pack` | `build/pack.js` | `dist/ApkStart-win64-portable/`（~226MB 解压后，首次启动再下运行时） |
-| `node build/zip.js <dir> <zip>` | `build/zip.js` | 7-Zip `-mx=9` 压包 + 用自家 zip 解析器自校验；**超 100MiB 直接失败**（Gitee 单文件上限） |
-| `npm run runtime` | `build/prepare-runtime.js` | `build/runtime/`（emulator 瘦身 + 镜像 xz/gz + `build/seed/userdata.img.gz`） |
-| `npm run build:exe` | 上面两步 + `electron-builder --win nsis` | `dist/release/ApkStart-<ver>-Setup.exe`（~1.32GB，内置运行时） |
-| `npm test` | `run-tests.js` + `engine-test.js` + `auto-test.js` | 70 项纯 Node 测试 |
-| `npm run test:boot` | `test/boot-test.js` | Alpine guest 真引导，验证 QEMU 参数/建盘/优雅关机 |
-| `npm run selftest` | `scripts/selftest.js` | 对已装设备端到端验收（adb/版本/freeform/共享目录，`--apk` 走完整安装→启动→截图） |
+| `npm run pack` | `build/pack.js` | `dist/ApkBuddyStart-win64-portable/` (~226 MB descomprimido; la ejecución se descarga en el primer inicio) |
+| `node build/zip.js <dir> <zip>` | `build/zip.js` | Comprime con 7-Zip `-mx=9` y se autoverifica con nuestro propio analizador zip; **falla directamente si supera 100 MiB** (límite de archivo único de Gitee) |
+| `npm run runtime` | `build/prepare-runtime.js` | `build/runtime/` (emulator reducido + imágenes xz/gz + `build/seed/userdata.img.gz`) |
+| `npm run build:exe` | Los dos pasos anteriores + `electron-builder --win nsis` | `dist/release/ApkBuddyStart-<ver>-Setup.exe` (~1,32 GB, ejecución integrada) |
+| `npm test` | `run-tests.js` + `engine-test.js` + `auto-test.js` | 70 pruebas de Node puro |
+| `npm run test:boot` | `test/boot-test.js` | Arranque real de un guest Alpine, valida parámetros QEMU/creación de disco/apagado limpio |
+| `npm run selftest` | `scripts/selftest.js` | Verificación de extremo a extremo sobre un dispositivo ya instalado (adb/versión/freeform/carpeta compartida; con `--apk` recorre instalación → arranque → captura) |
 
-`.github/workflows/ci.yml`：Windows × Node 20/22 跑 `npm test` + `test/pointer-hook-logic.ps1`（防止鼠标键位被改坏）。
-`.github/workflows/release.yml`：tag `v*` → `build` job（便携版 zip → GitHub Release → 同步 Gitee，缺 `GITEE_TOKEN` 直接失败而不是静默跳过）+ `full` job（组装运行时 → xz → NSIS Setup → 上传 Release + 运行时整包 zip）。
+`.github/workflows/ci.yml`: Windows × Node 20/22 ejecuta `npm test` + `test/pointer-hook-logic.ps1` (para evitar que se rompan los botones del ratón).
+`.github/workflows/release.yml`: tag `v*` → job `build` (zip portátil → GitHub Release → sincronización Gitee; si falta `GITEE_TOKEN`, falla directamente en lugar de omitirlo en silencio) + job `full` (ensamblar ejecución → xz → Setup NSIS → subir Release + zip de la ejecución completa).
 
-**发版检查清单**（从历史踩坑总结）：
-1. `package.json` 版本号必须 bump（否则客户端判「已是最新」）；
-2. 写 `.github/release-notes-<tag>.md` 就用它，否则 `--generate-notes`；
-3. `full` job 要 ~40 分钟（xz 压缩 1.1GB）；
-4. Gitee 用 `tools/publish-gitee.js`，整包优先、超限才切分；
-5. 发完核实「发行包 == 代码」：查 zip 内 `agent.ps1` 是否含 `SetScope`/`IsOurs`、`package.json` 版本。
-
----
-
-## 5. 测试与实机验证工具
-
-- **纯 Node 回归**（CI 必跑）：`test/auto-test.js` 覆盖 doctor 参数矩阵、容器状态机、下载器/双源、pointer 逻辑、日志滚动等；
-- **实机探针**（本机手动跑，沙箱里跑不了）：`tools/check-windows.js`（开机全窗口泄漏）、`check-console.js`（黑窗）、`check-launch-clean.js`（装+开+嵌）、`check-quit-clean.js`（退出残留）、`check-update.js`（真 GitHub API）、`e2e-boot.js`（冷启/热启计时）；
-- **界面冒烟**：`electron . --smoke out.png`，配合 `--settings` / `--perf` / `--download` 分别拍设置页各区；
-- **PS 逻辑测试**：`test/pointer-hook-logic.ps1` 反射驱动钩子回调；`agent-compile.ps1` 只验证 C# 能编译。
-
-> 本机（该开发机）实测环境：**Node 22.22.2 / npm（`.workbuddy/binaries/node`）**、**PortableGit 2.55**、Electron 33.4.11（`node_modules/electron/dist`）、运行时 `D:\ApkStartRuntime`（emulator 37.3.9.0 + AEHD Operational）、AVD `D:\ApkStartData`、数据 `%APPDATA%\apkstart`。
+**Lista de comprobación de publicación** (extraída de tropiezos históricos):
+1. Hay que subir (bump) el número de versión de `package.json` (si no, el cliente dice «ya estás al día»);
+2. Si se escribe `.github/release-notes-<tag>.md`, se usa; si no, `--generate-notes`;
+3. El job `full` tarda ~40 minutos (comprimir 1,1 GB en xz);
+4. Para Gitee usa `tools/publish-gitee.js`; primero el paquete completo y solo se divide si supera el límite;
+5. Tras publicar, verifica «el paquete publicado == el código»: revisa si el `agent.ps1` dentro del zip contiene `SetScope`/`IsOurs` y la versión de `package.json`.
 
 ---
 
-## 6. 现在的问题地图（接手时最值得先看的）
+## 5. Herramientas de prueba y verificación en equipo real
 
-### 6.1 已知热点 bug（对应 GitHub issue）
+- **Regresión de Node puro** (obligatoria en CI): `test/auto-test.js` cubre la matriz de parámetros de doctor, la máquina de estados del contenedor, el descargador/doble fuente, la lógica del puntero, la rotación de logs, etc.;
+- **Sondas de equipo real** (se ejecutan a mano en la máquina local; no funcionan en el sandbox): `tools/check-windows.js` (fugas de ventanas en el arranque), `check-console.js` (ventana negra), `check-launch-clean.js` (instalar+abrir+incrustar), `check-quit-clean.js` (residuos al salir), `check-update.js` (API real de GitHub), `e2e-boot.js` (tiempos de arranque en frío/en caliente);
+- **Prueba de humo de la interfaz**: `electron . --smoke out.png`, con `--settings` / `--perf` / `--download` para capturar cada zona de la página de ajustes;
+- **Pruebas de lógica PS**: `test/pointer-hook-logic.ps1` ejercita por reflexión la devolución de llamada del hook; `agent-compile.ps1` solo verifica que el C# compila.
 
-| Issue | 现象 | 已定位的代码位置 |
+> Entorno probado en esta máquina (la del desarrollo): **Node 22.22.2 / npm (`.workbuddy/binaries/node`)**, **PortableGit 2.55**, Electron 33.4.11 (`node_modules/electron/dist`), ejecución en `D:\ApkBuddyStartRuntime` (emulator 37.3.9.0 + AEHD Operational), AVD en `D:\ApkBuddyStartData` y datos en `%APPDATA%\apkstart`.
+
+---
+
+## 6. Mapa de problemas actuales (lo primero que conviene mirar al hacerse cargo)
+
+### 6.1 Bugs conocidos y activos (corresponden a issues de GitHub)
+
+| Issue | Síntoma | Ubicación del código ya localizada |
 |---|---|---|
-| #21 安装 2GB+ 卡住 | 大 APK 报错且「右下角一直转圈」 | `apk.js:78` `fs.readFileSync(filePath)` 整包读，撞 Node 单 Buffer 上限；应改用 `zip.js` 里已有的 `ZipFile`（fd 流式读中央目录） |
-| #20 / #25 无法开机（0xC0000005） | emulator 打印完 Userspace boot properties 后 `exit 3221225477` | 两例都是 NVIDIA + emulator 37.3.9.0 + `-gpu host`；本机运行时版本相同，可原地复现 |
-| #26 安装太慢/卡在准备运行时 | 首次部署停在下载 | `provision.installRuntimePack()` / 官方源逐件下载路径；Gitee 限流熔断 |
-| #23 便携版设了运行时目录仍下到 AppData | 路径规则不一致 | `paths().root` 与 `materializeImages` / `sysImgRoot` 的联动（见 2.5） |
-| #27 / #28 微信、UU 远程被藏窗口 | 已在 v0.3.4 修复（scope/IsOurs） | `agent.ps1:168`，用户升级即可 |
-| PR #18 / #22 | 与已合并实现重复 | #18 被 `b3fc7c2` 取代；#22 的 `_qemuImg` 参数顺序已在 `emulator.js:403` 修正 |
+| #21 Se cuelga al instalar APK de 2 GB+ | La app da error y «el icono de la esquina inferior derecha no deja de girar» | `apk.js:78` usa `fs.readFileSync(filePath)` para leer el paquete entero y choca con el límite de un único Buffer de Node; debería usar el `ZipFile` ya existente en `zip.js` (lectura por fd del directorio central) |
+| #20 / #25 No puede arrancar (0xC0000005) | El emulator imprime Userspace boot properties y luego `exit 3221225477` | Ambos casos son NVIDIA + emulator 37.3.9.0 + `-gpu host`; la ejecución local tiene la misma versión, así que se puede reproducir in situ |
+| #26 Instalación muy lenta / se queda en «preparando la ejecución» | El primer despliegue se detiene en la descarga | `provision.installRuntimePack()` / ruta de descarga pieza a pieza desde la fuente oficial; cortocircuito por limitación de Gitee |
+| #27 / #28 Se ocultan las ventanas de WeChat y UU Remote | Ya corregido en v0.3.4 (scope/IsOurs) | `agent.ps1:168`; basta con que el usuario actualice |
+| PR #18 / #22 | Duplican implementaciones ya integradas | #18 fue sustituido por `b3fc7c2`; el orden de parámetros de `_qemuImg` de #22 ya se corrigió en `emulator.js:403` |
 
-### 6.2 已确认的实现缺陷（走读时逐行核对出来的，未修）
+### 6.2 Defectos de implementación confirmados (detectados línea a línea en el recorrido, sin corregir)
 
-| # | 位置 | 缺陷 | 影响 |
+| # | Ubicación | Defecto | Impacto |
 |---|---|---|---|
-| 1 | `apk.js:78` / `installer.js:27` | `fs.readFileSync` 整包读 APK | 2GB+ 必炸（issue #21）；低内存机解析大包也危险 |
-| 2 | `zip.js` 全文 | **没有 Zip64**（`zip.js:29-30,37,161-162,180`） | 条目数 >65535 静默丢条目；单条目 >4GiB 直接 `RangeError`（系统镜像/更新包迟早撞上） |
-| 3 | `assoc.js:62-63` | 注释承诺的「保留用户原有关联」并不存在，卸载时无条件清空 `.apk` 默认值 | 用户原本的 APK 关联被抹掉；模块零测试 |
-| 4 | `logfile.js:19-21` | `bak === file` 时先删后 rename | 非 `*.log` 文件名会丢日志（`appLog` 恰好是 `app.log`，所以没暴雷） |
-| 5 | `provision.js:531` + `sources.js:412` | 部署刚开始固定 `percent:1`，随后**串行**测速每个地址最多 9s | 4 个候选 = 30s+ 零进度 → 用户以为「卡在准备运行时」（issue #26） |
-| 6 | `provision.js:575-576` / `:790` | `.xz` 展开失败被两层 `catch` 吞掉 | 进度停在 99% 后又跳回「改用官方源补齐」，白下一套 1.4GB |
-| 7 | `provision.js:262-277` | `guardDisk` 的 `need` 表缺 `'runtime'` 项，只估 1536MB | 整包+展开实际约 5GB，守卫通过后仍可能撑爆盘 |
-| 8 | `updater.js:80` | 便携版兜底 `/\.zip$/i` | 某版本只有 `ApkStart-runtime-*.zip` 时会被误当更新包解压进程序目录 |
-| 9 | `main.js:165-168` | `bootstrapBundledRuntime()` 在「便携版目录带 runtime」时直接覆盖用户设的 `runtime.dir` | 「设了运行时目录还是下到 AppData」（issue #23） |
-| 10 | `main.js:213` / `shortcut.js:120` | WebP 图标依赖隐藏 BrowserWindow 解码 | 纯 Node / 无 GUI 场景静默降级成品牌占位图，且「解码失败」与「没有图标」不可区分 |
-| 11 | `apk.js:29,67` | 图标格式白名单只有 `.png`/`.webp`，不递归 XML `<bitmap>` | `.jpg` 图标、adaptive-icon 组合会抽错图 |
-| 12 | `arsc.js:65-77` | config 打分是拍出来的常数（`anydpi` 罚 500、`language` 罚 40） | 中文应用可能拿到英文名；三种 entry 编码零测试，出错时静默回退默认值 |
+| 1 | `apk.js:78` / `installer.js:27` | `fs.readFileSync` lee el APK entero | Los APK de 2 GB+ revientan (issue #21); en máquinas con poca memoria también es peligroso analizar paquetes grandes |
+| 2 | Todo `zip.js` | **No hay Zip64** (`zip.js:29-30,37,161-162,180`) | Con más de 65535 entradas se pierden entradas en silencio; una entrada >4 GiB lanza `RangeError` (las imágenes del sistema y los paquetes de actualización tarde o temprano lo alcanzarán) |
+| 3 | `assoc.js:62-63` | La «preservación de la asociación original del usuario» que promete el comentario no existe; al desinstalar se borra sin ningún tipo de condición el valor predeterminado de `.apk` | Se pierde la asociación APK original del usuario; el módulo no tiene ninguna prueba |
+| 4 | `logfile.js:19-21` | Si `bak === file`, primero borra y luego renombra | Los nombres que no terminan en `*.log` pierden el log (`appLog` resulta ser `app.log`, así que no ha estallado) |
+| 5 | `provision.js:531` + `sources.js:412` | Al empezar el despliegue fija `percent:1` y después **mide la velocidad en serie** de cada dirección hasta 9 s | 4 candidatos = más de 30 s sin progreso → el usuario piensa que «se ha quedado en preparando la ejecución» (issue #26) |
+| 6 | `provision.js:575-576` / `:790` | El fallo al desplegar `.xz` se traga en dos niveles de `catch` | El progreso se queda en el 99 % y salta a «usar la fuente oficial para completar», descargando otro paquete de 1,4 GB en vano |
+| 7 | `provision.js:262-277` | A la tabla `need` de `guardDisk` le falta la entrada `'runtime'` y solo estima 1536 MB | El paquete completo + el despliegue ocupan en realidad unos 5 GB; la guarda puede pasar y aun así llenar el disco |
+| 8 | `updater.js:80` | Respaldo `/\.zip$/i` para la versión portátil | Si una versión solo tiene `ApkBuddyStart-runtime-*.zip`, se toma por paquete de actualización y se extrae dentro del directorio del programa |
+| 9 | `main.js:165-168` | `bootstrapBundledRuntime()` sobrescribe el `runtime.dir` elegido por el usuario cuando «el directorio portátil contiene runtime» | «Configuré el directorio de ejecución pero sigue descargando en AppData» (issue #23) |
+| 10 | `main.js:213` / `shortcut.js:120` | Los iconos WebP dependen de un BrowserWindow oculto para decodificarse | En Node puro / sin GUI degradan en silencio a una imagen de marca de marcador, y no se distingue «falló la decodificación» de «no hay icono» |
+| 11 | `apk.js:29,67` | La lista blanca de formatos de icono solo tiene `.png`/`.webp` y no recursa por XML `<bitmap>` | Los iconos `.jpg` y las combinaciones adaptive-icon se extraen mal |
+| 12 | `arsc.js:65-77` | La puntuación de config son constantes inventadas (`anydpi` resta 500, `language` resta 40) | Una app en chino puede tomar el nombre en inglés; los tres tipos de codificación de entry no tienen pruebas y, si fallan, vuelven al valor por defecto en silencio |
 
-### 6.3 结构性问题（下一阶段可做）
+### 6.3 Problemas estructurales (se pueden abordar en la siguiente fase)
 
-1. **大文件路径统一**：`apk.js` / `installer.parseBundle()` 换成现有的 `ZipFile`（fd 流式，`zip.js:128` 起）——峰值内存从「文件大小」降到「几 MB」，顺带解决 2GB 上限。注意两个类的 `read()` 语义不同（`ZipArchive` 返回 null / `ZipFile` 抛错），替换时要补 `has()` 判断；
-2. **补 Zip64**：EOCD 出现 `0xffff/0xffffffff` 时定位 Zip64 EOCD（`0x06064b50`）与 locator（`0x07064b50`），把 4 个字段换成 u64；
-3. **拆大文件**：`main.js` 1790 行的 IPC 注册按域拆到 `src/main/ipc/*.js`；`emulator.js` 1064 行按「参数矩阵 / 快照 / 数据分区」三块拆；
-4. **诊断能力不足**（#20/#25 的报告里 `attempts: []`、`bootLog: []`）：失败时把 `emulator.attempts` 与 emulator.log 尾部写进诊断报告，并把退出码翻译成中文（`3221225477` = 0xC0000005 访问冲突）；
-5. **GPU 兼容层**：`-gpu host` 在部分 NVIDIA 驱动 + emulator 37.3.9 上崩，可在 `badGpu` 机制上扩一条「退出码 0xC0000005 → 自动降级并记住」；
-6. **测试缺口**（按风险排序）：AXML/ARSC 无合成字节用例（真实 APK 夹具缺失时整段跳过 → CI 零覆盖）、`arsc.resolve()` 零断言、`.apks/.xapk` 无用例、`assoc.js` 零覆盖、`pngToIco`/`writeShortcut` 不在 `npm test` 里；
-7. **Gitee 资产与 GitHub 不一致**（v0.3.4 Gitee 只有便携包）：发布流程已有 `publish-gitee.js`，但 CI 需要 `GITEE_TOKEN` secret 才不失败。
+1. **Unificar la ruta de archivos grandes**: cambiar `apk.js` / `installer.parseBundle()` para usar el `ZipFile` ya existente (lectura por fd, `zip.js:128` en adelante): el pico de memoria baja de «el tamaño del archivo» a «unos pocos MB» y se resuelve de paso el límite de 2 GB. Ojo: las dos clases tienen semánticas distintas de `read()` (`ZipArchive` devuelve null / `ZipFile` lanza error), así que al sustituir hay que añadir comprobaciones `has()`;
+2. **Añadir Zip64**: cuando el EOCD muestra `0xffff/0xffffffff`, localizar el Zip64 EOCD (`0x06064b50`) y el locator (`0x07064b50`) y sustituir los 4 campos por u64;
+3. **Dividir archivos grandes**: repartir los 1790 líneas de registro IPC de `main.js` en `src/main/ipc/*.js` por dominio; dividir las 1064 líneas de `emulator.js` en tres bloques: «matriz de parámetros / instantáneas / partición de datos»;
+4. **Diagnóstico insuficiente** (los informes de #20/#25 muestran `attempts: []` y `bootLog: []`): al fallar, escribir `emulator.attempts` y el final de emulator.log en el informe de diagnóstico, y traducir los códigos de salida al español (`3221225477` = 0xC0000005, infracción de acceso);
+5. **Capa de compatibilidad GPU**: `-gpu host` se cae con algunos controladores NVIDIA y emulator 37.3.9; se puede ampliar el mecanismo `badGpu` con una regla «código de salida 0xC0000005 → degradar automáticamente y recordarlo»;
+6. **Huecos de prueba** (por riesgo): AXML/ARSC sin casos de bytes sintéticos (cuando faltan fixtures de APK reales se omite toda la sección → cobertura cero en CI), `arsc.resolve()` sin aserciones, sin casos para `.apks/.xapk`, `assoc.js` sin cobertura, `pngToIco`/`writeShortcut` fuera de `npm test`;
+7. **Los assets de Gitee no coinciden con GitHub** (en v0.3.4 Gitee solo tenía el paquete portátil): el proceso de publicación ya incluye `publish-gitee.js`, pero CI necesita el secreto `GITEE_TOKEN` para no fallar.
 
-### 6.4 部署链上最容易出问题的环节（11 条速查）
+### 6.4 Los eslabones más propensos a fallar en la cadena de despliegue (11 consultas rápidas)
 
-| 现象（用户视角） | 代码位置 | 机理 |
+| Síntoma (vista del usuario) | Ubicación en el código | Mecanismo |
 |---|---|---|
-| 卡在「准备运行时」1~3% | `provision.js:531` + `sources.js:412` | 串行测速，无字节进度 |
-| 停在 99% 又跳回「改用官方源」 | `provision.js:575-576,790` | `.xz` 展开失败被吞 |
-| 「设了运行时目录还是下 AppData」 | `provision.js:217-224,726` + `main.js:165-168` | `sysImgRoot` 三分支沿用老目录 + 完整版接管覆盖设置 |
-| 磁盘够却报空间不足 | `provision.js:262-277` | guard 只估 1.5GB |
-| 进度卡 95% | `download.js:446-503` | 慢源拖尾块；已加低速换源 + 保证 settle |
-| 连接中断后整个下载作废 | `download.js:155,188-191` | 见半截文件会降级单流 |
-| 更新卡在「正在替换程序」 | `updater.js:271,280-285,315-323` | 覆盖脚本**不能 detached**，安全软件会拦 |
-| 程序目录多出 1.5GB 文件 | `updater.js:80` | 运行时整包被当更新包 |
-| Gitee 某版本没安装包 | `release.yml` + `sources.js:172-204` | 缺 token 直接失败；分片必须 part1..N 连续 |
-| 换源后仍走老地址 | `main.js:819-825` | `provision._cache.*` 无失效入口，需重启 |
-| AVD 判定「已被占用」 | `layers.js:87-90` + `engine.js:856` | 残留 `*.lock`，清理面板可回收 |
+| Se queda en «preparando la ejecución» al 1~3 % | `provision.js:531` + `sources.js:412` | Medición de velocidad en serie, sin progreso de bytes |
+| Se para en el 99 % y salta a «usar la fuente oficial» | `provision.js:575-576,790` | El fallo al desplegar `.xz` se traga |
+| «Configuré el directorio de ejecución pero descarga en AppData» | `provision.js:217-224,726` + `main.js:165-168` | Tres ramas de `sysImgRoot` siguen el directorio antiguo + la toma automática de la versión completa sobrescribe el ajuste |
+| El disco está vacío pero dice que no hay espacio | `provision.js:262-277` | La guarda solo estima 1,5 GB |
+| El progreso se atasca en el 95 % | `download.js:446-503` | Bloques finales de una fuente lenta; ya se añadió cambio de fuente por baja velocidad y garantía de settle |
+| La descarga se anula al cortarse la conexión | `download.js:155,188-191` | Ver un archivo a medias degrada a flujo único |
+| La actualización se queda en «reemplazando el programa» | `updater.js:271,280-285,315-323` | El script de sobrescritura **no puede ir desacoplado**; el antivirus lo bloquea |
+| Aparece un archivo de 1,5 GB en el directorio del programa | `updater.js:80` | El paquete completo de la ejecución se toma por paquete de actualización |
+| Gitee no tiene instalador en cierta versión | `release.yml` + `sources.js:172-204` | Falta el token → fallo directo; los fragmentos deben ser part1..N consecutivos |
+| Tras cambiar de fuente sigue usando la dirección antigua | `main.js:819-825` | `provision._cache.*` no tiene punto de invalidación; hay que reiniciar |
+| El AVD se considera «ya en uso» | `layers.js:87-90` + `engine.js:856` | Quedan `*.lock` residuales; el panel de limpieza puede reciclarlos |
 
-> **给接手者的三条「先看这里」**
-> 1. 只看一个函数就能解释八成部署问题：`Provisioner.checkEnv()`（`provision.js:367`）；
-> 2. 路径规则只有一处：`Provisioner.paths()`（`provision.js:197`），新代码落运行时文件必须从这拿路径；
-> 3. 下载策略都收敛在 `Sources` + `downloadMulti`，不要在 `provision.js` 里另写一套。
+> **Tres «mira aquí primero» para quien se haga cargo**
+> 1. Con ver una sola función se explican el 80 % de los problemas de despliegue: `Provisioner.checkEnv()` (`provision.js:367`);
+> 2. Las reglas de rutas están en un solo sitio: `Provisioner.paths()` (`provision.js:197`); el código nuevo que escriba archivos de ejecución debe tomar las rutas de ahí;
+> 3. La estrategia de descarga está concentrada en `Sources` + `downloadMulti`; no escribas otra distinta en `provision.js`.
 
-### 6.5 本地修复记录（v0.3.5-dev，未发布、未 push）
+### 6.5 Registro de correcciones locales (v0.3.5-dev, sin publicar ni enviar)
 
-2026-11-14 第二轮开发：只改本地工作区，`npm test` 由 **98 项增至 113 项全绿**
-（run-tests 3→8 + engine-test 25 + auto-test 70→80，新增合成 APK / .xapk 拆分包 /
-materializeImages / Zip64 / 更新资产 / 0xC0000005 / 日志边界 / 失败落盘 / 启动组件拼接等回归用例），
-并跑了一次真实冷启（25s）/ 热启（5s，命中快照）/ 优雅关机（快照已存）端到端验证；
-**实测 2.15GB 的合成 APK：解析 18ms、进程 RSS 47MB**（旧路径需要约 2.2GB 连续内存），
-`assoc` 用本机真实注册表做过「备份 → 注册 → 注销 → 还原」闭环
-（本机原关联 `MuMuPlayer.apk`，已原样还原）。
+Segunda ronda de desarrollo del 2026-11-14: solo se modificó el espacio de trabajo local; `npm test` pasó de **98 a 113 pruebas, todas en verde**
+(run-tests 3→8 + engine-test 25 + auto-test 70→80, con nuevos casos de regresión: APK sintético / paquetes divididos .xapk /
+materializeImages / Zip64 / assets de actualización / 0xC0000005 / límites de log / persistencia de fallos / composición de componentes de arranque, etc.),
+y se hizo una verificación de extremo a extremo con un arranque en frío real (25 s) / en caliente (5 s, con instantánea) / apagado limpio (instantánea guardada);
+**APK sintético de 2,15 GB medido: análisis en 18 ms y 47 MB de RSS en el proceso** (la ruta antigua necesitaba unos 2,2 GB de memoria contigua);
+`assoc` se probó con el registro real de esta máquina en un ciclo completo de «copia de seguridad → registro → desregistro → restauración»
+(asociación original de la máquina: `MuMuPlayer.apk`, restaurada tal cual).
 
-| # | 修了什么 | 位置 | 为什么 |
+| # | Qué se corrigió | Ubicación | Por qué |
 |---|---|---|---|
-| 1 | `parseApk` / `parseBundle` 改文件版 ZIP 流式读 | `apk.js:80-95`、`installer.js:27-60` | 2GB+ APK 不再撞 Node 单 Buffer 上限；拆分包的每个分片也流式落盘 |
-| 2 | ZIP 支持 Zip64（EOCD locator + extra id=0x0001） | `zip.js:9-92`、`zip.js:151-236` | 条目数 >65535 不再静默截断；超大条目不再越界/丢偏移 |
-| 3 | `adb install` 超时按包体放大（封顶 20 分钟） | `adb.js:105-114` | 2GB 包 push + dexopt 会超过固定 4 分钟 |
-| 4 | 部署：测速改为带进度（第 i/n 个源，6s/源） | `sources.js:408-424` | 「卡在准备运行时」不再是一段 30 秒无进度 |
-| 5 | 镜像展开失败不再被吞、改 `.part` + 原子改名；「已展开」判定改为不小于压缩包大小（半截镜像会被重解） | `provision.js:766-826` | 旧版停 99% 后跳回官方源再下 1.4GB；半截 system.img 会被当已完成 |
-| 6 | `guardDisk('runtime')` 补 5000MB 估算 | `provision.js:262-268` | 整包 + 展开峰值约 4.7GB，旧估算只 1.5GB |
-| 7 | 用户手设的运行时目录不再被 bundled runtime 覆盖 | `main.js:136-162` | issue #23「设了目录还下到 AppData」 |
-| 8 | 更新器兜底 `.zip` 排除 `ApkStart-runtime-*.zip` | `updater.js:73-88` | 防止某次发布缺便携包时把 1.5GB 运行时整包当程序包解压 |
-| 9 | 0xC0000005 诊断规则 + 自动降 GPU + 失败落盘 | `doctor.js:320-330`、`emulator.js`（`describeExitCode` / `_persistFailure` / `lastFailure` / `tailLogFile`）、`engine.js:diagnostics` | issue #20/#25：报告里 `attempts: []`、`bootLog: []`、UNKNOWN 的根因是数据只在内存里 |
-| 10 | `assoc` 卸载时还原用户原有 `.apk` 关联 | `assoc.js:40-135` | 旧实现无条件清空默认值（注释承诺的保护不存在） |
-| 11 | 日志滚动 `bak === file` 边界守卫 | `logfile.js:15-30` | 非 `.log` 文件名会被先删后 rename 导致丢日志 |
-| 12 | 图标：白名单加 jpg、XML 图标递归 3 层、占位图可区分并给软警告 | `apk.js:27-115`、`shortcut.js:109-140`、`installer.js:210-235,289-300` | `.jpg`/adaptive-icon/layer-list 图标不再一律变占位图；真解不出来时告诉用户 |
-| 13 | 安装失败 UI：错误提示统一由 `install:error` 收口并清掉「正在安装」转圈 | `ui/app.js:469-520,1446-1460`、`main.js:566` | issue #21 里「报错了右下角还在加载」 |
-| 14 | 新增「合成 APK」回归测试：自造 AXML 清单 + PNG 图标 + ABI 目录，覆盖 `attributeStart` 基准、非命名空间 `package`、整数属性、启动 Activity 解析；`.xapk` 拆分包与 `materializeImages`（展开/跳过/坏镜像不留半截）另有专门用例 | `test/lib/make-apk.js`、`test/run-tests.js`、`test/auto-test.js` | 真实 APK 夹具缺失时 CI 上 axml/apk 零覆盖；镜像展开是部署最脆的一步 |
-| 15 | **全新安装后点图标只看到安卓桌面**：`startApp` 无条件拼 `${pkg}/${activity}`，而 `resolveLauncher`/新装记录里存的是完整组件 `pkg/class` → `am start` 组件变成 `pkg/pkg/class`，系统直接取消（result code=-92）。新增 `componentArg()` 统一两种形式，`parseResolvedActivity()` 容忍尾部空行/priority 行 | `adb.js:105-131,520`、`test/auto-test.js` | 这是实测中发现的**上游已有 bug**（v0.3.4 同样存在），只影响「新装/重装过的应用」，老 apps.json（纯类名）不会触发 |
+| 1 | `parseApk` / `parseBundle` pasan a lectura zip por archivo con flujo | `apk.js:80-95`, `installer.js:27-60` | Los APK de 2 GB+ ya no chocan con el límite de un único Buffer de Node; cada fragmento del paquete dividido también se escribe con flujo |
+| 2 | ZIP con soporte Zip64 (locator EOCD + extra id=0x0001) | `zip.js:9-92`, `zip.js:151-236` | Más de 65535 entradas ya no se truncan en silencio; las entradas gigantes ya no se salen de rango ni pierden desplazamientos |
+| 3 | Tiempo de espera de `adb install` escalado con el tamaño del paquete (tope 20 minutos) | `adb.js:105-114` | Subir un paquete de 2 GB + dexopt supera los 4 minutos fijos |
+| 4 | Despliegue: medición de velocidad con progreso (fuente i de n, 6 s por fuente) | `sources.js:408-424` | «Quedarse en preparando la ejecución» ya no es un tramo de 30 s sin progreso |
+| 5 | El fallo al desplegar la imagen ya no se traga; usa `.part` + rename atómico; la comprobación de «ya desplegada» exige un tamaño no menor que el del comprimido (una imagen a medias se vuelve a descomprimir) | `provision.js:766-826` | Antes se paraba en el 99 % y volvía a la fuente oficial para bajar otros 1,4 GB; un system.img a medias se daba por terminado |
+| 6 | `guardDisk('runtime')` incorpora una estimación de 5000 MB | `provision.js:262-268` | Paquete + despliegue alcanzan unos 4,7 GB en el pico; la estimación antigua era de solo 1,5 GB |
+| 7 | El directorio de ejecución fijado por el usuario ya no lo sobrescribe la ejecución integrada | `main.js:136-162` | Issue #23: «configuré el directorio pero sigue descargando en AppData» |
+| 8 | El respaldo `.zip` del actualizador excluye `ApkBuddyStart-runtime-*.zip` | `updater.js:73-88` | Evita que, si una publicación carece del paquete portátil, se extraiga el paquete completo de 1,5 GB como si fuera el programa |
+| 9 | Regla de diagnóstico 0xC0000005 + degradación automática de GPU + persistencia del fallo | `doctor.js:320-330`, `emulator.js` (`describeExitCode` / `_persistFailure` / `lastFailure` / `tailLogFile`), `engine.js:diagnostics` | Issue #20/#25: que `attempts: []`, `bootLog: []` y UNKNOWN aparecieran en el informe se debía a que los datos solo vivían en memoria |
+| 10 | `assoc` restaura la asociación `.apk` original del usuario al desinstalar | `assoc.js:40-135` | La implementación antigua borraba el valor por defecto sin mirar nada (la protección prometida en el comentario no existía) |
+| 11 | Guarda de límite en la rotación de logs para `bak === file` | `logfile.js:15-30` | Los nombres que no son `.log` se borraban antes de renombrar y perdían el log |
+| 12 | Iconos: añadido jpg a la lista blanca,recursivo de 3 niveles en iconos XML, marcador distinguishable con aviso suave | `apk.js:27-115`, `shortcut.js:109-140`, `installer.js:210-235,289-300` | Los iconos `.jpg`/adaptive-icon/layer-list ya no se convierten todos en marcadores; si no se pueden resolver de verdad, se avisa al usuario |
+| 13 | UI de error de instalación: los mensajes se concentran en `install:error` y se limpia el giro de «instalando» | `ui/app.js:469-520,1446-1460`, `main.js:566` | En el issue #21, «da error pero la esquina inferior derecha sigue cargando» |
+| 14 | Nuevas pruebas de regresión de «APK sintético»: manifiesto AXML propio + icono PNG + directorios ABI, cubren la base `attributeStart`, `package` sin namespace, atributos enteros y análisis de la Activity de arranque; los paquetes divididos `.xapk` y `materializeImages` (desplegar/omitir/imagen dañada sin dejar restos) tienen casos propios | `test/lib/make-apk.js`, `test/run-tests.js`, `test/auto-test.js` | Sin fixtures de APK reales, axml/apk tenían cobertura cero en CI; desplegar imágenes es el paso más frágil del despliegue |
+| 15 | **Tras una instalación nueva, al pulsar el icono solo se ve el escritorio Android**: `startApp` componía sin ningún tipo de condición `${pkg}/${activity}`, pero `resolveLauncher`/ los registros de nuevas instalaciones guardan el componente completo `pkg/class` → el componente de `am start` queda `pkg/pkg/class` y el sistema lo cancela (result code=-92). Se añadió `componentArg()` para unificar ambas formas y `parseResolvedActivity()` tolera líneas vacías finales / líneas priority | `adb.js:105-131,520`, `test/auto-test.js` | Es un **bug existente aguas arriba detectado en las pruebas** (también en v0.3.4) que solo afecta a apps «instaladas/reinstaladas»; los apps.json antiguos (solo nombre de clase) no lo disparan |
 
-> 仍未做（留给下一轮）：`main.js` IPC 拆分、`emulator.js` 拆分、`arsc` config 打分可配置化、
-> `main.js` 1790 行里的托盘/更新菜单抽离、`arsc.js` 的合成字节用例（`axml.js`/`apk.js`
-> 已由 `test/run-tests.js` 里的「合成 APK」用例覆盖，不再依赖外部夹具）。
+> Aún sin hacer (para la siguiente ronda): dividir el IPC de `main.js`, dividir `emulator.js`, hacer configurable la puntuación de config de `arsc`,
+> extraer la bandeja y el menú de actualización de las 1790 líneas de `main.js`, y los casos de bytes sintéticos de `arsc.js` (`axml.js`/`apk.js`
+> ya están cubiertos por los casos de «APK sintético» en `test/run-tests.js` y ya no dependen de fixtures externos).
 
 ---
 
-## 7. 附录：模块速查
+## 7. Apéndice: referencia rápida de módulos
 
-### 7.1 `src/core` 导出签名
+### 7.1 Firmas de exportación de `src/core`
 
-| 模块 | 主要导出 |
+| Módulo | Exportaciones principales |
 |---|---|
-| `store.js` | `DATA_DIR/ICON_DIR/APK_DIR`、`getSettings/saveSettings/getApps/saveApps/upsertApp/removeApp/getApp/iconPath/apkPath/ensureDirs/DEFAULT_SETTINGS` |
-| `engine.js` | `class Runtime`、`MONITOR_PORT` |
+| `store.js` | `DATA_DIR/ICON_DIR/APK_DIR`, `getSettings/saveSettings/getApps/saveApps/upsertApp/removeApp/getApp/iconPath/apkPath/ensureDirs/DEFAULT_SETTINGS` |
+| `engine.js` | `class Runtime`, `MONITOR_PORT` |
 | `emulator.js` | `class EmulatorEngine` |
-| `provision.js` | `class Provisioner`（`paths/checkEnv/installAdb/installEmulator/installSystemImage/installPlayImage/installAehd/installQemu/materializeImages/installRuntimePack/guardDisk/emulatorAccel/hypervisor`） |
-| `installer.js` | `class Installer`、`accentOf` |
-| `adb.js` | `class AdbClient`、`friendlyInstallError`、`friendlyLaunchError` |
+| `provision.js` | `class Provisioner` (`paths/checkEnv/installAdb/installEmulator/installSystemImage/installPlayImage/installAehd/installQemu/materializeImages/installRuntimePack/guardDisk/emulatorAccel/hypervisor`) |
+| `installer.js` | `class Installer`, `accentOf` |
+| `adb.js` | `class AdbClient`, `friendlyInstallError`, `friendlyLaunchError` |
 | `apk.js` | `parseApk` |
-| `zip.js` | `class ZipArchive`（整包内存）、`class ZipFile`（fd 流式） |
-| `appwin.js` | `class AppWindow`、`TITLEBAR_H` |
-| `agent.js` | `class WinAgent`、`AGENT_SCRIPT` |
+| `zip.js` | `class ZipArchive` (paquete en memoria), `class ZipFile` (flujo por fd) |
+| `appwin.js` | `class AppWindow`, `TITLEBAR_H` |
+| `agent.js` | `class WinAgent`, `AGENT_SCRIPT` |
 | `doctor.js` | `hostInfo/freeDiskMB/gpuCandidates/lcdFor/shortPath/liteProfile/chooseProfile/overridesFromSettings/autoProfile/planVariants/isPortFree/snapshotKey/imageIdentity/diagnose/describeProfile/writeReport/vcRedistOk` |
-| `updater.js` | `class Updater`（`check/prepare/apply`、`repoUrl`） |
-| `sources.js` | 双源列举/测速/缓存/熔断（详见 `_wip-provision-stack.md`） |
-| `download.js` | `downloadMulti` / 单流 / 断点续传 / 看门狗（详见同上） |
+| `updater.js` | `class Updater` (`check/prepare/apply`, `repoUrl`) |
+| `sources.js` | Enumeración/medición/caché/cortocircuito de doble fuente (véase `_wip-provision-stack.md`) |
+| `download.js` | `downloadMulti` / flujo único / reanudación / perro guardián (véase el mismo documento) |
 | `container.js` | `nextSessionState/buildSessionCommands/buildIdleCommands/buildRestoreCommands/NEVER_TRIM` |
 | `pointer.js` | `pointerOptions/hookOptions/wheelToSwipe/WheelRouter/isInputCommand` |
-| `layers.js` | `summary/prune`（容器分层盘点与回收） |
+| `layers.js` | `summary/prune` (inventario y reciclado de capas del contenedor) |
 
-### 7.2 相关文档
+### 7.2 Documentos relacionados
 
-- `docs/ARCHITECTURE.md`：面向用户的架构与设计取舍（含「容器模型」「鼠标键位」章节）；
-- `docs/CODE-WALKTHROUGH-PARSE.md`：**离线解析栈逐文件走读**（zip / AXML / ARSC / PNG / apk / shortcut / assoc / version / logfile / display），含每个文件的接口签名、行号级坑点、调用点、测试覆盖与内存画像；
-- `docs/CODE-WALKTHROUGH-RUNTIME.md`：**下载/部署/更新栈逐文件走读**（sources / download / provision / updater / store / layers / notify / android），含双源选优、分块混源、断点续传、路径规则、更新覆盖脚本，以及 14 条部署问题速查表。
+- `docs/ARCHITECTURE.md`: arquitectura y decisiones de diseño orientadas al usuario (incluye los capítulos «modelo de contenedor» y «botones del ratón»);
+- `docs/CODE-WALKTHROUGH-PARSE.md`: **recorrido archivo por archivo de la pila de análisis sin conexión** (zip / AXML / ARSC / PNG / apk / shortcut / assoc / version / logfile / display), con las firmas de interfaz de cada archivo, puntos delicados con número de línea, puntos de llamada, cobertura de pruebas y perfil de memoria;
+- `docs/CODE-WALKTHROUGH-RUNTIME.md`: **recorrido archivo por archivo de la pila de descarga/despliegue/actualización** (sources / download / provision / updater / store / layers / notify / android), con selección entre dobles fuentes, mezcla de bloques de distintas fuentes, reanudación, reglas de rutas, script de sobrescritura en actualizaciones y una tabla de 14 consultas rápidas de problemas de despliegue.
 
-### 7.3 需要实机才能验证的部分（沙箱/CI 覆盖不到）
+### 7.3 Partes que solo se pueden verificar en equipo real (fuera del alcance del sandbox/CI)
 
-- 开机全流程与窗口不泄漏：`tools/check-windows.js`、`check-console.js`、`check-launch-clean.js`、`check-quit-clean.js`；
-- 冷启/热启计时：`tools/e2e-boot.js`（历史数据：冷启 ~23s、命中快照 ~5s、含前置探测端到端 30.7s / 13.7s）；
-- 更新链路：`tools/check-update.js`（真 GitHub API + 真覆盖脚本）；
-- 鼠标键位、嵌入、转屏：`test/pointer-hook-logic.ps1`、`test/embed-probe*.ps1`、`test/win-*.ps1`。
+- Flujo completo de arranque y ausencia de fugas de ventanas: `tools/check-windows.js`, `check-console.js`, `check-launch-clean.js`, `check-quit-clean.js`;
+- Tiempos de arranque en frío/en caliente: `tools/e2e-boot.js` (datos históricos: arranque en frío ~23 s, con instantánea ~5 s, extremo a extremo con detección previa 30,7 s / 13,7 s);
+- Cadena de actualización: `tools/check-update.js` (API real de GitHub + script real de sobrescritura);
+- Botones del ratón, incrustación y giro de pantalla: `test/pointer-hook-logic.ps1`, `test/embed-probe*.ps1`, `test/win-*.ps1`.

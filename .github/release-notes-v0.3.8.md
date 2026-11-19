@@ -1,62 +1,62 @@
-# ApkStart v0.3.8
+# ApkBuddyStart v0.3.8
 
-> 一句话：加了一张**好看的启动欢迎卡**（开机自启时提醒你一切就绪），修好了**部分用户检查不到更新**，新增**清理旧版本残留**，并把界面整体美化了一轮。
+> En una frase: se añade una **bonita tarjeta de bienvenida al arrancar** (que te avisa de que todo está listo al iniciarse automáticamente con el sistema), se corrige que **algunos usuarios no podían comprobar las actualizaciones**, se añade la **limpieza de restos de versiones antiguas** y se renueva por completo la estética de la interfaz.
 
-## 一、新增：启动欢迎卡
+## 1. Novedad: tarjeta de bienvenida al arrancar
 
-开机自启或打开 ApkStart 时，弹一张轻量的欢迎卡：
+Al iniciarse automáticamente con el sistema o al abrir ApkBuddyStart, aparece una tarjeta de bienvenida ligera:
 
-- 顶部是品牌渐变头图 + 动态问候（早上好 / 下午好 / 夜深了…）；
-- 三个指标一目了然：**已装应用 / 安卓运行时状态 / 设备端口**；
-- 有两条当下最有用的提示（没装应用时教怎么装；装了应用时教窗口操作）；
-- 发现新版本时，会在这里直接提示，不再另外弹右下角气泡；
-- 底部可以勾 **「下次启动不再自动弹出」**，也可以直接「打开设置」。
+- Arriba, una cabecera con el degradado de la marca y un saludo dinámico (buenos días / buenas tardes / es tarde…);
+- Tres indicadores de un vistazo: **aplicaciones instaladas / estado del runtime de Android / puerto del dispositivo**;
+- Dos consejos útiles para el momento: si no hay aplicaciones instaladas, enseña a instalarlas; si las hay, enseña a manejar las ventanas;
+- Cuando hay una versión nueva, se avisa aquí directamente, sin mostrar además una burbuja en la esquina inferior derecha;
+- Abajo se puede marcar **«No mostrar automáticamente la próxima vez»** o pulsar «Abrir ajustes».
 
-弹出规则：开机自启必弹；手动打开则每天最多一次；勾选后永久不弹。
+Reglas de aparición: al iniciarse automáticamente con el sistema, siempre; al abrir manualmente, como máximo una vez al día; si se marca la casilla, nunca más.
 
-## 二、修复：部分用户检查不到更新
+## 2. Corrección: algunos usuarios no podían comprobar las actualizaciones
 
-**原因**：版本信息依赖两家的 API。GitHub 匿名 API 每 IP 每小时只有 60 次；Gitee 的匿名 API 更紧，实测连续几次就返回 `403 Rate Limit Exceeded`。公司网 / 校园网 / 运营商 NAT 出口下用户很容易两个源都被限流，界面就只会显示「检查更新失败」。
+**Causa**: la información de versiones dependía de las API de dos servicios. La API anónima de GitHub solo permite 60 peticiones por IP y hora; la de Gitee es aún más estricta y, en pruebas, devuelve `403 Rate Limit Exceeded` tras unas pocas peticiones seguidas. En redes de empresa / campus / con NAT del operador, es fácil que ambos servicios limiten la frecuencia y la interfaz solo muestre «error al comprobar actualizaciones».
 
-**修复**：
+**Corrección**:
 
-- 新增**不依赖 API 的兜底**：直接跟随 `releases/latest` 的 302 跳转拿版本号（走 CDN，不消耗 API 额度），再按发布约定拼出下载地址；
-- GitHub 和 Gitee 的 `/releases/download/<tag>/<文件名>` 规范地址都支持拼装（实测 Gitee 会 302 到附件直链，能下到完整字节）；
-- 检查失败时，界面不再是一片空白，而是给一个 **「打开下载页」** 按钮；`app:updateOpen` 现在也放行 `gitee.com`，国内用户不会被挡。
+- Se añade un **respaldo que no depende de la API**: seguir directamente la redirección 302 de `releases/latest` para obtener el número de versión (por CDN, sin consumir cuota de API) y luego componer la URL de descarga según la convención de publicación;
+- Se admiten las URL canónicas `/releases/download/<tag>/<nombre de archivo>` tanto de GitHub como de Gitee (en pruebas, Gitee redirige 302 al enlace directo del archivo y se descargan todos los bytes);
+- Cuando falla la comprobación, la interfaz ya no queda en blanco, sino que ofrece un botón **«Abrir página de descargas»**; `app:updateOpen` ahora también permite `gitee.com`, para que los usuarios de China no se queden fuera.
 
-## 三、新增：清理旧版本残留
+## 3. Novedad: limpiar restos de versiones antiguas
 
-设置 → 系统集成 → **「清理旧版本残留」**：
+Ajustes → Integración con el sistema → **«Limpiar restos de versiones antiguas»**:
 
-- 扫描**旧版本程序目录**（同目录下的 `ApkStart-vX.Y.Z-win64-portable` 等，且必须真的含 `ApkStart.exe`，绝不碰当前正在运行的版本）；
-- 扫描**已失效的注册表卸载项**（`InstallLocation` 或卸载程序已经不存在的死条目）；
-- 扫描**更新下载留下的临时包**（`%APPDATA%\apkstart\update` 与临时目录里的 `ApkStart-*.zip` 等）；
-- 先列出清单和可释放空间，确认后再删，并如实报告「几项被占用没删掉」。
+- Analiza los **directorios de versiones antiguas del programa** (como `ApkBuddyStart-vX.Y.Z-win64-portable` en el mismo directorio, y que contengan de verdad `ApkBuddyStart.exe`; nunca toca la versión que se está ejecutando);
+- Analiza las **entradas de desinstalación del registro ya invalidadas** (entradas huérfanas cuya `InstallLocation` o cuyo desinstalador ya no existen);
+- Analiza los **paquetes temporales que dejan las actualizaciones** (`%APPDATA%\apkstart\update` y `ApkBuddyStart-*.zip` en directorios temporales, etc.);
+- Primero muestra la lista y el espacio liberable, y solo borra tras confirmar; informa con honestidad de «cuántos elementos estaban en uso y no se pudieron borrar».
 
-只做可证明安全的清理，**不动用户数据、不动当前版本**。
+Se limpia solo aquello cuya seguridad se puede demostrar: **no se tocan los datos del usuario ni la versión actual**.
 
-## 四、隐藏启动时的零碎小弹窗
+## 4. Ocultar las ventanas emergentes molestas del arranque
 
-- 启动时的「发现新版本」系统通知已取消，统一收进欢迎卡；
-- 之前的启动提示分散在多个 toast / 气泡里，现在只有这一张卡片；
-- 控制台黑窗压制逻辑保持（模拟器 / netsimd / adb 的控制台窗口仍会被隐藏）。
+- Se elimina la notificación del sistema «nueva versión encontrada» al arrancar; todo se unifica en la tarjeta de bienvenida;
+- Antes los avisos de arranque estaban repartidos entre varios toast / burbujas; ahora solo está esta tarjeta;
+- Se mantiene la supresión de la ventana negra de consola (las ventanas de consola del emulador / netsimd / adb siguen ocultándose).
 
-## 五、界面美化
+## 5. Renovación de la interfaz
 
-- 全新配色：翡翠绿品牌色 + 柔和中性底，背景带一层很淡的品牌光晕；
-- 标题栏改为**磨砂玻璃**质感，窗口图标换成矢量品牌标记（小尺寸下也认得出是"播放键"，不再是糊成一团的深色方块）；
-- 应用卡片：更大圆角、悬停上浮 + 品牌色描边、图标带投影；
-- 按钮：主按钮渐变 + 内高光，次级按钮更轻；
-- 模态框、分组标题、滚动条、状态栏统一重做；
-- 欢迎卡是同一套设计语言（渐变头图 + 光晕 + 点阵纹理）。
+- Nueva paleta de colores: verde esmeralda de marca + fondo neutro suave, con un halo de marca muy tenue en el fondo;
+- La barra de título adopta un acabado de **cristal esmerilado**, y el icono de ventana se sustituye por una marca vectorial (a tamaño pequeño se sigue reconociendo como un «botón de reproducción», en lugar de un bloque oscuro borroso);
+- Tarjetas de aplicación: esquinas más redondeadas, elevación al pasar el ratón + contorno del color de marca e iconos con sombra;
+- Botones: degradado + brillo interior en el principal, y los secundarios más ligeros;
+- Ventanas modales, títulos de grupo, barras de desplazamiento y barra de estado rediseñados de forma coherente;
+- La tarjeta de bienvenida usa el mismo lenguaje visual (cabecera con degradado + halo + textura de puntos).
 
-## 六、实测
+## 6. Pruebas reales
 
-- `npm test`：**113 项全部通过**（8 + 25 + 80）。
-- 冒烟截图验证：主界面与欢迎卡均正常渲染（见发布页截图）。
-- 「清理旧版本残留」在开发机上扫出 6 个旧版本目录、约 1.3 GB，当前运行版本被正确排除。
+- `npm test`: **113 pruebas, todas superadas** (8 + 25 + 80).
+- Verificación con capturas de humo: la interfaz principal y la tarjeta de bienvenida se renderizan con normalidad (ver capturas en la página de versiones).
+- «Limpiar restos de versiones antiguas» detecta en el equipo de desarrollo 6 directorios de versiones antiguas, unos 1,3 GB, y excluye correctamente la versión en ejecución.
 
-## 七、升级方式
+## 7. Cómo actualizar
 
-- 便携版：解压覆盖，数据目录（默认 `%APPDATA%\apkstart`）保持不变。
-- 安装版：直接安装覆盖。
+- Versión portable: descomprime y sobrescribe; el directorio de datos (por defecto `%APPDATA%\apkstart`) se mantiene igual.
+- Versión instalada: instala directamente para sobrescribir.

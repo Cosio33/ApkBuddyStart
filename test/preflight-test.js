@@ -1,12 +1,13 @@
 'use strict';
 /**
- * 本机体检 / 自动配置的纯逻辑测试：不需要 Electron、不需要模拟器、不真的改系统。
+ * Pure logic tests for the local health check / auto-configuration: no Electron, no emulator, no real system changes.
  *
- * 守两件事：
- *   1. 结论必须和人话一致（BIOS 没开就说 BIOS，商店版不能自己提权就只给入口）；
- *   2. 自动配置只写「安全」的设置项，生成的驱动必须能过驱动校验。
+ * Two things are guarded:
+ *   1. Conclusions must match plain language (if BIOS is disabled, say BIOS; if the Store edition cannot
+ *      self-elevate, only provide an entry point);
+ *   2. Auto-configuration writes only "safe" settings, and generated drivers must pass driver validation.
  *
- * 运行：node test/preflight-test.js
+ * Run: node test/preflight-test.js
  */
 const assert = require('assert/strict');
 const path = require('path');
@@ -50,52 +51,52 @@ const hwBase = () => ({
 const clone = (o) => JSON.parse(JSON.stringify(o));
 
 (() => {
-  console.log('\n[体检 · 资源推荐]');
+  console.log('\n[Health check · resource recommendations]');
 
-  test('32GB / 16 线程：给 8GB + 4 核', () => {
+  test('32GB / 16 threads: recommend 8GB + 4 cores', () => {
     const r = preflight.recommendResources({ totalMB: 32768, cores: 16, accelOk: true, vramMB: 2048 });
     assert.equal(r.memoryMB, 8192);
     assert.equal(r.cores, 4);
     assert.equal(r.renderSize, 'auto');
   });
 
-  test('8GB / 4 线程：给 3GB + 2 核，且不超过宿主一半', () => {
+  test('8GB / 4 threads: recommend 3GB + 2 cores, not exceeding half the host', () => {
     const r = preflight.recommendResources({ totalMB: 8192, cores: 4, accelOk: true, vramMB: 1024 });
     assert.equal(r.memoryMB, 3072);
     assert.equal(r.cores, 2);
     assert.ok(r.memoryMB <= 8192 / 2);
   });
 
-  test('4GB 内存也只给 2GB，不会把 Windows 挤爆', () => {
+  test('4GB of memory still yields only 2GB, without overloading Windows', () => {
     const r = preflight.recommendResources({ totalMB: 4096, cores: 4, accelOk: false, vramMB: 256 });
     assert.equal(r.memoryMB, 2048);
-    assert.equal(r.renderSize, '540x960', '没有加速时应该降分辨率');
+    assert.equal(r.renderSize, '540x960', 'Resolution should be lowered when there is no acceleration');
   });
 
-  test('没有加速 → 540p；小显存也 → 540p', () => {
+  test('No acceleration -> 540p; small VRAM -> 540p too', () => {
     assert.equal(preflight.recommendResources({ totalMB: 16384, cores: 8, accelOk: false, vramMB: 4096 }).renderSize, '540x960');
     assert.equal(preflight.recommendResources({ totalMB: 16384, cores: 8, accelOk: true, vramMB: 256 }).renderSize, '540x960');
   });
 
-  console.log('\n[体检 · 渲染后端建议]');
+  console.log('\n[Health check · rendering backend recommendations]');
 
-  test('没有加速一律 software（先保证能出画面）', () => {
+  test('Without acceleration, always software (first ensure something renders)', () => {
     assert.equal(preflight.recommendGpu({ vendor: 'nvidia', accelOk: false, vramMB: 8192 }).gpuMode, 'software');
   });
 
-  test('NVIDIA + 加速 → host；AMD/Intel → swangle', () => {
+  test('NVIDIA + acceleration -> host; AMD/Intel -> swangle', () => {
     assert.equal(preflight.recommendGpu({ vendor: 'nvidia', accelOk: true, vramMB: 8192 }).gpuMode, 'host');
     assert.equal(preflight.recommendGpu({ vendor: 'amd', accelOk: true, vramMB: 2048 }).gpuMode, 'swangle');
     assert.equal(preflight.recommendGpu({ vendor: 'intel', accelOk: true, vramMB: 2048 }).gpuMode, 'swangle');
   });
 
-  test('显卡型号读不到时不乱猜，交回 auto', () => {
+  test('When the GPU model is unavailable, do not guess; return auto', () => {
     assert.equal(preflight.recommendGpu({ vendor: 'unknown', accelOk: true, vramMB: 0 }).gpuMode, 'auto');
   });
 
-  console.log('\n[体检 · 场景判断]');
+  console.log('\n[Health check · scenario assessment]');
 
-  test('一切正常：level=good，建议 host 或 swangle，不强制 TCG', () => {
+  test('All good: level=good, recommend host or swangle, do not force TCG', () => {
     const r = preflight.evaluate({ hw: hwBase(), settings: {} });
     assert.equal(r.level, 'good', r.summary);
     assert.equal(r.patch.engine.forceTcg, false);
@@ -103,7 +104,7 @@ const clone = (o) => JSON.parse(JSON.stringify(o));
     assert.equal(r.recommended.gpuMode, 'swangle');
   });
 
-  test('BIOS 虚拟化没开：判 bad，只给「进 BIOS」的手动指引，不假装能一键', () => {
+  test('BIOS virtualization disabled: judge as bad, give only manual "enter BIOS" guidance, do not pretend one-click works', () => {
     const hw = hwBase();
     hw.cpu.vtFirmware = false;
     hw.virtualization.accelOk = false;
@@ -111,12 +112,12 @@ const clone = (o) => JSON.parse(JSON.stringify(o));
     const r = preflight.evaluate({ hw });
     assert.equal(r.level, 'bad');
     const item = r.items.find((i) => i.key === 'vt-bios-off');
-    assert.ok(item, '缺少 BIOS 提示');
+    assert.ok(item, 'Missing BIOS hint');
     assert.equal(item.action.kind, 'manual');
-    assert.equal(r.patch.engine.forceTcg, true, 'BIOS 没开时应该锁软件模拟');
+    assert.equal(r.patch.engine.forceTcg, true, 'Software emulation should be locked when BIOS is disabled');
   });
 
-  test('CPU 不支持虚拟化：说明只能软件模拟，不给开 BIOS 的指引', () => {
+  test('CPU without virtualization support: explain software emulation only, no BIOS-enabling guidance', () => {
     const hw = hwBase();
     hw.cpu.vtSupported = false;
     hw.virtualization.accelOk = false;
@@ -125,7 +126,7 @@ const clone = (o) => JSON.parse(JSON.stringify(o));
     assert.ok(!r.items.some((i) => i.key === 'vt-bios-off'));
   });
 
-  test('Windows 功能没开 + 安装版：给「一键开启（需管理员）」', () => {
+  test('Windows feature disabled + installer edition: offer "enable with one click (admin required)"', () => {
     const hw = hwBase();
     hw.virtualization.hypervisorPlatform = 'disabled';
     hw.virtualization.accelOk = false;
@@ -137,7 +138,7 @@ const clone = (o) => JSON.parse(JSON.stringify(o));
     assert.ok(/activar|habilitar/i.test(item.action.label));
   });
 
-  test('商店版不能自行提权：同一个问题只打开「Windows 功能」窗口', () => {
+  test('Store edition cannot self-elevate: for the same issue, only open the "Windows Features" dialog', () => {
     const hw = hwBase();
     hw.virtualization.hypervisorPlatform = 'disabled';
     hw.virtualization.accelOk = false;
@@ -148,7 +149,7 @@ const clone = (o) => JSON.parse(JSON.stringify(o));
     assert.ok(!/一键/.test(item.action.label));
   });
 
-  test('没有加速 + 安装版：额外提供「安装 AEHD」入口', () => {
+  test('No acceleration + installer edition: additionally offer an "install AEHD" entry point', () => {
     const hw = hwBase();
     hw.virtualization.accelOk = false;
     hw.virtualization.hypervisorPlatform = 'disabled';
@@ -157,7 +158,7 @@ const clone = (o) => JSON.parse(JSON.stringify(o));
     assert.equal(accel.action.id, 'accel');
   });
 
-  test('Hyper-V 接管 VT 时 WMI 报 false 也不能误判「不支持」', () => {
+  test('When Hyper-V takes over VT, a false WMI report must not be misjudged as "unsupported"', () => {
     const hw = hwBase();
     hw.cpu.vtSupported = 'unknown';
     hw.cpu.vtFirmware = true;
@@ -168,7 +169,7 @@ const clone = (o) => JSON.parse(JSON.stringify(o));
     assert.ok(!r.items.some((i) => i.key === 'vt-unsupported'));
   });
 
-  test('显存读不到 / 显卡未知：给 warn 但不出致命结论', () => {
+  test('VRAM unavailable / unknown GPU: give warn, not a fatal conclusion', () => {
     const hw = hwBase();
     hw.gpu = { name: '', vendor: 'unknown', vramMB: 0, driverVersion: '', driverDate: '', status: '' };
     const r = preflight.evaluate({ hw });
@@ -176,14 +177,14 @@ const clone = (o) => JSON.parse(JSON.stringify(o));
     assert.equal(r.level, 'warn');
   });
 
-  test('驱动太旧会提醒更新（黑屏常见原因）', () => {
+  test('An outdated GPU driver triggers an update reminder (a common cause of black screens)', () => {
     const hw = hwBase();
     hw.gpu.driverDate = '2019-03-01';
     const r = preflight.evaluate({ hw });
     assert.ok(r.items.some((i) => i.key === 'gpu-driver-old'));
   });
 
-  test('内存小 / 系统太旧都会单独提示', () => {
+  test('Low memory / outdated OS are each flagged separately', () => {
     const hw = hwBase();
     hw.memory.totalMB = 4096;
     hw.osBuild = 18363;
@@ -192,24 +193,24 @@ const clone = (o) => JSON.parse(JSON.stringify(o));
     assert.ok(r.items.some((i) => i.key === 'os-old'));
   });
 
-  console.log('\n[体检 · 自动配置的边界]');
+  console.log('\n[Health check · auto-configuration boundaries]');
 
-  test('自动配置只写安全设置项（不会碰数据分区 / 分辨率模式等）', () => {
+  test('Auto-configuration writes only safe settings (no touching data partitions / resolution modes, etc.)', () => {
     const r = preflight.evaluate({ hw: hwBase() });
     assert.deepEqual(Object.keys(r.patch.engine).sort(),
       ['autoMemory', 'cores', 'forceTcg', 'gpuMode', 'memoryMB', 'renderSize'].sort());
   });
 
-  test('自动生成的驱动能通过校验，且 match 绑定这台机器', () => {
+  test('The auto-generated driver passes validation and its match is bound to this machine', () => {
     const r = preflight.evaluate({ hw: hwBase() });
     const v = drivers.validateDriver(r.driver);
     assert.equal(v.ok, true, v.errors.join('；'));
     assert.deepEqual(v.driver.match.gpuVendor, ['amd']);
     assert.equal(v.driver.effect.gpuMode, 'swangle');
-    assert.equal(v.driver.effect.forceTcg, null, '有加速时不该写 forceTcg');
+    assert.equal(v.driver.effect.forceTcg, null, 'forceTcg should not be written when acceleration is available');
   });
 
-  test('没有加速时生成的驱动会锁软件模拟', () => {
+  test('A driver generated without acceleration locks software emulation', () => {
     const hw = hwBase();
     hw.virtualization.accelOk = false;
     hw.virtualization.accelKind = 'none';
@@ -220,24 +221,24 @@ const clone = (o) => JSON.parse(JSON.stringify(o));
     assert.equal(v.driver.effect.gpuMode, 'software');
   });
 
-  test('探测失败也要能给结论（未知 ≠ 崩溃）', () => {
+  test('A failed probe must still produce a conclusion (unknown != crash)', () => {
     const r = preflight.evaluate({ hw: { platform: 'win32' } });
     assert.ok(['warn', 'bad'].includes(r.level));
     assert.ok(r.items.length >= 3);
     assert.equal(typeof r.summary, 'string');
   });
 
-  test('collect() 是异步的（不阻塞界面）', () => {
+  test('collect() is asynchronous (does not block the UI)', () => {
     assert.equal(preflight.collect.constructor.name, 'AsyncFunction');
   });
 
-  test('评估是纯函数：同样的输入必须得到同样的配置', () => {
+  test('Assessment is a pure function: the same input must produce the same configuration', () => {
     const a = preflight.evaluate({ hw: {}, settings: {} });
     const b = preflight.evaluate({ hw: {}, settings: {} });
     assert.deepEqual(a.patch, b.patch);
     assert.deepEqual(a.driver, b.driver);
   });
 
-  console.log(`\n结果：${passed} 通过，${failed} 失败\n`);
+  console.log(`\nResult: ${passed} passed, ${failed} failed\n`);
   process.exit(failed ? 1 : 0);
 })();

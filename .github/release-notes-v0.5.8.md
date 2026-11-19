@@ -1,79 +1,68 @@
-# ApkStart v0.5.8
+# ApkBuddyStart v0.5.8
 
-这一版解决的是「装完到底能不能跑、要改什么」：新增**本机体检 · 自动配置**。
-装完点一次，先查清 CPU 虚拟化、Windows 虚拟机监控程序平台、显卡与显存、内存和系统版本，
-能自动改的直接改好，需要提权的给按钮，只能进 BIOS 的说清楚怎么改。
+Esta versión responde a la pregunta «después de instalar, ¿funciona y qué hay que cambiar?»: añade **revisión local · configuración automática**. Tras instalar, pulsa una vez: comprueba la virtualización de la CPU, la plataforma de hipervisor de Windows, la tarjeta y la memoria gráficas, la memoria RAM y la versión del sistema; corrige directamente lo que se puede, ofrece un botón para lo que necesita privilegios de administrador y explica claramente qué cambiar en la BIOS cuando no hay otra opción.
 
 ---
 
-## 一、查什么、怎么查
+## 1. Qué se comprueba y cómo
 
-| 项目 | 手段 |
+| Elemento | Método |
 |---|---|
-| CPU 虚拟化（VT-x / SVM） | `Win32_Processor` + BIOS 侧标志 |
-| Hyper-V / VBS 是否在跑 | `Win32_ComputerSystem.HypervisorPresent` |
-| 虚拟机监控程序平台（WHPX） | `Get-WindowsOptionalFeature`；无权限时退到 `WinHvPlatform.dll` + Hypervisor 双重证据 |
-| 当前硬件加速是否可用 | `emulator -accel-check`（复用缓存结论） |
-| AEHD 驱动 | `System32\drivers\aehd.sys` |
-| 显卡 / 显存 / 驱动日期 | `Win32_VideoController` + 注册表 `qwMemorySize`（`AdapterRAM` >4GB 会截断，不可信） |
-| 内存 / 系统版本 | `Win32_ComputerSystem` / `os.release()` |
+| Virtualización de la CPU (VT-x / SVM) | `Win32_Processor` + indicadores del lado de la BIOS |
+| Hyper-V / VBS en ejecución | `Win32_ComputerSystem.HypervisorPresent` |
+| Plataforma de hipervisor (WHPX) | `Get-WindowsOptionalFeature`; sin permisos, se recurre a la doble pista de `WinHvPlatform.dll` + Hypervisor |
+| Si la aceleración por hardware funciona ahora | `emulator -accel-check` (reutiliza la conclusión en caché) |
+| Driver AEHD | `System32\drivers\aehd.sys` |
+| Tarjeta / memoria gráfica / fecha del driver | `Win32_VideoController` + el registro `qwMemorySize` (`AdapterRAM` se trunca por encima de 4 GB y no es fiable) |
+| Memoria / versión del sistema | `Win32_ComputerSystem` / `os.release()` |
 
-**踩到一个必须写的坑**：Hyper-V / 内存完整性（VBS）接管 VT 之后，
-`VMMonitorModeExtensions`、`SecondLevelAddressTranslationExtensions` 会返回 `False`。
-本机就是这种情况（AMD 8745HS + WHPX 可用），第一版据此判成「CPU 不支持虚拟化」，
-把能跑硬件加速的机器误报成不能跑。现在只有「没有 Hypervisor + 加速也不可用」时才认定不支持，
-否则一律标未知。
+**Hay un escollo que había que documentar sí o sí**: cuando Hyper-V / integridad de memoria (VBS) toma el control de VT, `VMMonitorModeExtensions` y `SecondLevelAddressTranslationExtensions` devuelven `False`.
+Esto es justamente lo que pasaba en esta máquina (AMD 8745HS + WHPX disponible) y la primera versión lo interpretó como «la CPU no admite virtualización», dando un falso negativo a una máquina que sí podía usar aceleración por hardware. Ahora solo se concluye que no hay soporte cuando «no hay Hypervisor **y** la aceleración tampoco está disponible»; en cualquier otro caso se marca como desconocido.
 
-## 二、自动配置什么
+## 2. Qué se configura automáticamente
 
-点「应用推荐配置」后只写这几项（都安全、随时可改回来）：
+Tras pulsar «aplicar la configuración recomendada» solo se escriben estos valores (todos seguros y reversibles en cualquier momento):
 
-| 设置 | 规则 |
+| Ajuste | Regla |
 |---|---|
-| 内存 | 32GB→8GB / 16GB→6GB / 12GB→4GB / 8GB→3GB / 更小→2GB，且永不超过宿主一半 |
-| CPU 核心 | 8 线程以上→4 核；4~7→2~3 核；至少留 1 核给 Windows |
-| 画质 | 无加速或显存 <512MB→540×960，否则自动 |
-| 渲染后端 | 有加速→交给自动降级链；无加速→`software` |
-| 强软件模拟 | 无加速→开 |
+| Memoria | 32 GB→8 GB / 16 GB→6 GB / 12 GB→4 GB / 8 GB→3 GB / menos→2 GB, y nunca más de la mitad de la memoria del anfitrión |
+| Núcleos de CPU | más de 8 hilos→4 núcleos; de 4 a 7→2–3 núcleos; siempre se deja al menos 1 núcleo para Windows |
+| Calidad gráfica | sin aceleración o memoria gráfica <512 MB→540×960; en caso contrario, automática |
+| Backend de renderizado | con aceleración→se deja a la cadena de degradación automática; sin aceleración→`software` |
+| Forzar emulación por software | sin aceleración→activado |
 
-同时把这台机器的参数**固化成一份驱动**（`auto-<厂商>-<build>.json`，priority 5），
-以后每次开机自动套用，不用重复体检。驱动仍要过 0.5.7 的白名单校验，
-体检生成的内容也不能绕开参数限制。
+Además, los parámetros de esta máquina se **fijan en un driver** (`auto-<fabricante>-<build>.json`, priority 5), que se aplica automáticamente en cada arranque sin tener que repetir la revisión. El driver sigue sometido a la validación de listas blancas de la 0.5.7: lo que genera la revisión no puede saltarse los límites de parámetros.
 
-## 三、需要你参与的
+## 3. Lo que requiere tu intervención
 
-| 情况 | 界面 |
+| Situación | Interfaz |
 |---|---|
-| BIOS 里 VT-x / SVM 没开 | 只给步骤（重启进 BIOS → SVM Mode / Intel VT-x → Enabled），**不假装能一键** |
-| Windows 功能没开（安装版） | 「一键开启（需管理员）」→ 提权开 HypervisorPlatform + VirtualMachinePlatform → 提示重启 |
-| Windows 功能没开（商店版） | 「打开「Windows 功能」窗口」+ 勾选说明（MSIX 固定 mediumIL，无法自行提权） |
-| 无加速但 CPU 支持（安装版） | 额外给「安装 AEHD 驱动（需管理员）」 |
-| 显卡驱动超过 3 年 | 提醒去厂商官网更新（不自动装驱动，装错版本更糟） |
+| VT-x / SVM no activado en la BIOS | Solo se dan los pasos (reiniciar y entrar en la BIOS → SVM Mode / Intel VT-x → Enabled); **no se finge que se puede con un clic** |
+| Función de Windows desactivada (edición instalada) | «Activar con un clic (requiere administrador)» → eleva privilegios y activa HypervisorPlatform + VirtualMachinePlatform → pide reiniciar |
+| Función de Windows desactivada (edición de la Store) | «Abrir la ventana de características de Windows» + instrucciones de marcado (MSIX tiene mediumIL fijo y no puede elevar privilegios por sí solo) |
+| Sin aceleración pero CPU compatible (edición instalada) | Se ofrece además «instalar el driver AEHD (requiere administrador)» |
+| Driver gráfico con más de 3 años | Se recomienda actualizarlo en la web del fabricante (no se instala automáticamente: una versión equivocada sería peor) |
 
-## 四、界面
+## 4. Interfaz
 
-设置页新增「本机体检 · 自动配置」：一条一条列结论（绿色 ok / 黄色 warn / 红色 bad），
-每条带具体说明和可执行按钮；底部一句话总结 + 推荐配置。
-体检耗时约 2~3 秒（一次 PowerShell 拿全部硬件信息，另一次查系统功能；无权限时自动降级）。
+La página de ajustes añade «Revisión local · configuración automática»: enumera cada conclusión (verde ok / amarillo warn / rojo bad), con una explicación concreta y un botón accionable en cada una; abajo, un resumen en una frase y la configuración recomendada.
+La revisión tarda unos 2–3 s (una llamada a PowerShell obtiene toda la información del hardware y otra consulta las funciones del sistema; sin permisos, se degrada automáticamente).
 
-## 五、验证
+## 5. Verificación
 
-- 新增 `test/preflight-test.js` **22 项**：资源推荐边界、渲染后端建议、BIOS/商店版/安装版三种结论、
-  WMI 误判回归、「自动配置只写安全项」、生成的驱动能过驱动校验、探测失败也能给结论；
-- 全套纯 Node 测试 **309 项通过**；
-- 本机实跑：AMD 8745HS / Radeon 780M / 32GB / WHPX 可用 → `level=good`，
-  推荐 6GB + 4 核 + auto 渲染，生成 `auto-amd-26300` 驱动（swangle）。
+- Nuevo `test/preflight-test.js` con **22 pruebas**: límites de recomendación de recursos, sugerencia de backend de renderizado, las tres conclusiones (BIOS / Store / edición instalada), regresión del falso diagnóstico de WMI, «la configuración automática solo escribe valores seguros», que el driver generado pase la validación de drivers y que se pueda dar una conclusión aunque falle la detección;
+- Suite completa de pruebas solo con Node: **309 pruebas superadas**;
+- Prueba real en esta máquina: AMD 8745HS / Radeon 780M / 32 GB / WHPX disponible → `level=good`, recomendación de 6 GB + 4 núcleos + renderizado auto, y se genera el driver `auto-amd-26300` (swangle).
 
-## 从 0.5.7 升级说明
+## Notas de actualización desde 0.5.7
 
-- `0.5.8.0 > 0.5.7.0`，商店可直接覆盖升级；已装应用、存档、快照都保留。
-- 体检**不会自动运行**：不点「开始体检」就不做任何探测、不改任何设置。
-- 之前手动配过内存/核心的用户：体检推荐值会覆盖这两项（这是「应用推荐配置」的本意），
-  不想覆盖就别点应用，只看报告。
+- `0.5.8.0 > 0.5.7.0`; la Store puede sobrescribir la actualización directamente; se conservan aplicaciones, partidas e instantáneas ya instaladas.
+- La revisión **no se ejecuta automáticamente**: si no pulsas «iniciar revisión», no se hace ninguna detección ni se cambia ningún ajuste.
+- Quienes hubieran configurado memoria / núcleos a mano: los valores recomendados por la revisión sobrescriben esos dos ajustes (es justo lo que significa «aplicar la configuración recomendada»); si no quieres que se sobrescriban, no pulses aplicar y limitate a ver el informe.
 
-## 微软商店
+## Microsoft Store
 
-- 包体：`dist/store/ApkStart_0.5.8.0_x64.msix`（x64，约 850 MB，内置完整运行时）
-- 身份：`RoutineMiku.ApkStart` / `CN=58CA1DED-8AB3-4D0D-AF50-62C9B781AA4D`
-- 提交材料：`docs/store-listing.md`（含本版 What's new 中英文段）
-- 文档：`docs/preflight.md`（体检）、`docs/drivers.md`（驱动）
+- Paquete: `dist/store/ApkBuddyStart_0.5.8.0_x64.msix` (x64, unos 850 MB, runtime completo incluido)
+- Identidad: `RoutineMiku.ApkBuddyStart` / `CN=58CA1DED-8AB3-4D0D-AF50-62C9B781AA4D`
+- Materiales de envío: `docs/store-listing.md` (incluye el texto «What's new» de esta versión en español e inglés)
+- Documentación: `docs/preflight.md` (revisión) y `docs/drivers.md` (drivers)

@@ -1,47 +1,47 @@
-# ApkStart v0.4.1
+# ApkBuddyStart v0.4.1
 
-> 一句话：定位并根治了「旋转黑边 / 应用未填满 / 点击失效 / 点不动同意」这一组症状——它们其实是**同一个原因**：嵌入的模拟器窗口和 Electron 网页层是兄弟窗口，网页层一直在最前面。
+> En una frase: se localiza y se erradica el grupo de síntomas «borde negro al rotar / la aplicación no llena / los clics no funcionan / no se puede pulsar aceptar»: en realidad todos tenían **la misma causa**: la ventana del emulador incrustada y la capa web de Electron son ventanas hermanas, y la capa web está siempre por delante.
 
-## 一、真正的根因
+## 1. La causa raíz real
 
-用 `WindowFromPoint` 在画面中心做命中测试，发现返回的**不是模拟器窗口**，而是 `Chrome_RenderWidgetHostHWND`（Electron 的网页渲染层）。
+Usando `WindowFromPoint` para hacer una prueba de impacto en el centro de la imagen, se descubre que lo que devuelve **no es la ventana del emulador**, sino `Chrome_RenderWidgetHostHWND` (la capa de renderizado web de Electron).
 
-也就是说：网页层那块黑底一直盖在安卓画面之上，并且把鼠标事件全吃了。于是同时出现：
+Es decir, el fondo negro de la capa web seguía cubriendo la imagen de Android y se comía todos los eventos del ratón. Por eso aparecían a la vez:
 
-| 用户看到 | 实际原因 |
+| Lo que ve el usuario | Causa real |
 |---|---|
-| 画面有黑边 / 未填满 | 网页层黑底盖住了嵌入画面，或只露出一部分 |
-| 点击失效、无法对应 | 鼠标点到了网页层，根本没进安卓 |
-| 点不动「同意并继续」 | 同上（`adb input tap` 能点，因为是逻辑坐标、绕过宿主） |
-| 旋转 / 全屏后更明显 | 改窗口尺寸触发 Chromium 重绘，又把自己抬回最前 |
+| La imagen tiene bordes negros / no llena | El fondo negro de la capa web tapa la imagen incrustada, o solo deja ver una parte |
+| Los clics no funcionan / no corresponden | El ratón hace clic en la capa web y nunca llega a Android |
+| No se puede pulsar «Aceptar y continuar» | Igual que arriba (`adb input tap` sí funciona, porque usa coordenadas lógicas y se salta el anfitrión) |
+| Más evidente tras rotar / pantalla completa | Cambiar el tamaño de la ventana provoca un redibujado de Chromium, que se vuelve a traer al frente |
 
-之前 v0.3.9 我用 `SetWindowRgn` 裁剪想把标题栏那条 8px 挤出画面，反而**破坏了 Qt/GL 子窗口的命中测试**，并让 region 在 resize 后与窗口尺寸不匹配 —— 这正是这一版问题的直接来源。
+Antes, en v0.3.9, yo usé `SetWindowRgn` para recortar aquella franja de 8 px de la barra de título, y eso **rompió la prueba de impacto de las ventanas hijas Qt/GL** e hizo que la región no coincidiera con el tamaño de la ventana tras un redimensionado: esa es la fuente directa del problema de esta versión.
 
-## 二、修复
+## 2. Corrección
 
-1. **移除 `SetWindowRgn` 裁剪**，改为在 `Embed()` 时显式清掉旧版本可能残留的 region。标题栏那条溢出由宿主自绘标题栏自然盖住。
-2. **把模拟器窗口挂成网页渲染层的子窗口**（而不是宿主的兄弟子窗口）。子窗口的 Z 序与鼠标命中天然优先于父窗口，网页层再也不会盖住画面、吃掉点击。
-   - embed 那一刻网页层可能还没建好，所以在 `Fit()` 与常驻扫描里都做了补挂，保证一定生效。
-3. **收窄 `HideStrayWindows`**：只隐藏明确的弹窗类（Qt 工具窗 / 控制台），绝不碰 `QWindowIcon` / `subWin`（那是正在显示的 LCD），避免把画面误藏成全黑。
-4. **启动完成后把窗口抬到最前**（短暂 topmost 再撤销）：避免别的窗口（浏览器等）盖在上面导致「黑屏 + 点不动」。
-5. **旋转时的窗口尺寸**：
-   - 最大化状态下 `setContentSize` 无效，现在先 `unmaximize` 再改尺寸，否则横屏画面被塞进竖窗口 = 黑边 / 未填满；
-   - 目标尺寸限制在屏幕可用区内；
-   - `wm size` 变化后 Qt 会重排多次，改为连续 6 轮 `Fit` 收敛，彻底消除残留黑边。
+1. **Se elimina el recorte con `SetWindowRgn`** y, en su lugar, al hacer `Embed()` se limpia explícitamente cualquier región residual de versiones antiguas. El desbordamiento bajo la barra de título lo cubre naturalmente la barra de título dibujada por el anfitrión.
+2. **Se cuelga la ventana del emulador como ventana hija de la capa de renderizado web** (en lugar de ser una ventana hermana del anfitrión). El orden Z y la detección del ratón de una ventana hija tienen prioridad natural sobre los de la ventana padre, así que la capa web nunca vuelve a tapar la imagen ni a comerse los clics.
+   - En el momento de incrustar, la capa web quizá aún no exista; por eso se vuelve a colgar tanto en `Fit()` como en el escaneo permanente, para garantizar que surta efecto.
+3. **Se restringe `HideStrayWindows`**: solo oculta los tipos de ventana claramente emergentes (ventanas de herramientas Qt / consola) y nunca toca `QWindowIcon` / `subWin` (que es la LCD que se está mostrando), para no ocultar por error la imagen y dejarla toda negra.
+4. **Tras terminar el arranque, se trae la ventana al frente** (topmost momentáneo que luego se retira): evita que otras ventanas (navegador, etc.) queden encima y provoquen «pantalla negra + clics que no funcionan».
+5. **Tamaño de la ventana al rotar**:
+   - En estado maximizado `setContentSize` no hace nada; ahora primero se llama a `unmaximize` y luego se cambia el tamaño; si no, la imagen horizontal se mete en una ventana vertical = bordes negros / imagen que no llena;
+   - El tamaño objetivo se limita al área útil de la pantalla;
+   - Tras cambiar `wm size`, Qt vuelve a reorganizar la ventana varias veces; ahora se hacen 6 rondas consecutivas de `Fit` para convergir y eliminar por completo los bordes negros residuales.
 
-## 三、实测（这次是端到端真实交互，不是 adb 模拟）
+## 3. Pruebas reales (esta vez interacción real de extremo a extremo, no simulación con adb)
 
-- 用**真实鼠标**点击「同意并继续」→ 进入 `MainFragmentActivity` → 继续点进 `ShortSeriesActivity` 播放页；
-- `PrintWindow` 抓宿主窗口：安卓画面**铺满标题栏以下全部区域，四周无黑边、无留白**，视频 / 点赞 / 评论 / 选集 / 标题栏四按钮全部正常；
-- `WindowFromPoint` 在画面中心返回模拟器窗口（修复前返回网页层）；
-- `npm test`：**115 项全部通过**（8 + 25 + 82），新增两条回归测试钉住「嵌入窗口必须挂到网页层下且不得设 region」。
+- Con un **ratón real** se pulsa «Aceptar y continuar» → se entra en `MainFragmentActivity` → se sigue hasta la página de reproducción `ShortSeriesActivity`;
+- Captura de la ventana del anfitrión con `PrintWindow`: la imagen de Android **llena toda el área por debajo de la barra de título, sin bordes negros ni espacios en blanco alrededor**; vídeo / me gusta / comentarios / episodios / los cuatro botones de la barra de título, todo funciona con normalidad;
+- `WindowFromPoint` en el centro de la imagen devuelve la ventana del emulador (antes de la corrección devolvía la capa web);
+- `npm test`: **115 pruebas, todas superadas** (8 + 25 + 82); se añaden dos pruebas de regresión que fijan que «la ventana incrustada debe colgarse bajo la capa web y no debe tener región».
 
-## 四、工程加固
+## 4. Refuerzo de ingeniería
 
-- `agent.ps1` 保持 UTF-8 BOM（丢 BOM 会让 PowerShell 5.1 按 ANSI 读中文注释，`Add-Type` 编译失败 → 窗口代理启动失败）；
-- 新增回归测试：验证 `SetParent(emu, parent)` / `FindChromeRender` 存在、`CreateRectRgn(0, clipTop)` 不存在、embed 时清 region。
+- `agent.ps1` mantiene la BOM UTF-8 (perderla hace que PowerShell 5.1 lea los comentarios en chino como ANSI y falle la compilación de `Add-Type` → fallo al iniciar el proxy de ventanas);
+- Nuevas pruebas de regresión: verifican que existan `SetParent(emu, parent)` / `FindChromeRender`, que no exista `CreateRectRgn(0, clipTop)` y que se limpie la región al incrustar.
 
-## 五、升级方式
+## 5. Cómo actualizar
 
-- 便携版：解压覆盖，数据目录（默认 `%APPDATA%\apkstart`）保持不变。
-- 安装版：直接安装覆盖。
+- Versión portable: descomprime y sobrescribe; el directorio de datos (por defecto `%APPDATA%\apkstart`) se mantiene igual.
+- Versión instalada: instala directamente para sobrescribir.

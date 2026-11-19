@@ -74,7 +74,7 @@ function pointInTriangle(px, py, ax, ay, bx, by, cx, cy) {
 }
 
 /**
- * 绘制 ApkStart 图标：深色圆角方块 + 安卓绿启动三角
+ * 绘制 ApkBuddyStart 图标：深色圆角方块 + 安卓绿启动三角
  * @param {number} size 输出边长
  */
 function drawAppIcon(size = 256) {

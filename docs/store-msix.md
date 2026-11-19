@@ -1,202 +1,201 @@
-# 微软商店（MSIX）版本
+# Versión de Microsoft Store (MSIX)
 
-这个目录里的脚本和应用改动，目的是产出一个**「一次下载、装完即用」**的 Microsoft Store
-安装包：里面已经包含 Android 模拟器、platform-tools 和系统镜像，用户不需要任何联网部署。
+Los scripts y los cambios en la aplicación de este directorio tienen como objetivo producir un paquete de Microsoft Store
+«que se descarga una vez y funciona nada más instalarlo»: ya incluye el emulador de Android, platform-tools y la imagen del sistema, y el usuario no necesita ningún despliegue con conexión a red.
 
-> 一句话现状：**打包链路已经就绪，能不能真上架只取决于你有没有 Partner Center 账号。**
-> 自动化能做的部分（清单、图标、打包、自签、校验）全部在这份文档里；
-> 需要在网页上人工完成的部分（注册账号、上传、填 listing、送审）在文末列成清单。
+> Situación en pocas palabras: **la cadena de empaquetado está lista; que se pueda publicar de verdad solo depende de que tengas una cuenta de Partner Center.**
+> Todo lo que se puede automatizar (manifiesto, iconos, empaquetado, autofirma, verificación) está en este documento;
+> lo que hay que hacer a mano en la web (registrar la cuenta, subir el paquete, rellenar el listing, enviar a certificación) se enumera como lista de tareas al final.
 
 ---
 
-## 1. 它和现在的 NSIS 安装包有什么不同
+## 1. En qué se diferencia del instalador NSIS actual
 
-| | NSIS（`npm run build:exe`） | MSIX（商店版） |
+| | NSIS (`npm run build:exe`) | MSIX (versión de tienda) |
 |---|---|---|
-| 安装位置 | `%LOCALAPPDATA%\Programs\ApkStart`（可写） | `C:\Program Files\WindowsApps\...`（**只读**） |
-| 用户数据目录 | `%APPDATA%\apkstart` | `%USERPROFILE%\ApkStart\data` |
-| 运行时位置 | 装到安装目录，可写 | 直接在包内只读运行，镜像展开到数据目录 |
-| 自更新 | 支持（下载 → 替换 exe → 重启） | **关闭**，更新走商店 |
-| 硬件加速 | WHPX 或自动下载安装 AEHD 内核驱动 | **只能 WHPX**（MSIX 不允许装驱动、不允许提权） |
-| 签名 | 不需要（用户自己承担 SmartScreen） | 提交时不用签，商店会重签 |
+| Ubicación de instalación | `%LOCALAPPDATA%\Programs\ApkBuddyStart` (escribible) | `C:\Program Files\WindowsApps\...` (**solo lectura**) |
+| Directorio de datos del usuario | `%APPDATA%\apkstart` | `%USERPROFILE%\ApkBuddyStart\data` |
+| Ubicación de la ejecución | Se instala en el directorio de instalación, escribible | Se ejecuta directamente desde el paquete en solo lectura; la imagen se despliega en el directorio de datos |
+| Actualización automática | Admite (descargar → reemplazar el exe → reiniciar) | **Desactivada**, las actualizaciones van por la tienda |
+| Aceleración por hardware | WHPX, o descarga e instalación automática del controlador de kernel AEHD | **Solo WHPX** (MSIX no permite instalar controladores ni elevar privilegios) |
+| Firma | No hace falta (el usuario asume SmartScreen) | No hay que firmar al enviar; la tienda vuelve a firmar |
 
-数据目录为什么搬出 `%APPDATA%`：MSIX 的 full-trust 应用会把 `%APPDATA%` / `%LOCALAPPDATA%`
-下的**写入**重定向到 `%LOCALAPPDATA%\Packages\<包族名>\LocalCache\...`，而环境变量和
-API 返回的仍是重定向前的真路径。我们从数据目录里 spawn `emulator.exe` / `adb.exe`，
-一旦子进程和父进程对这些路径的「视图」不一致，就会变成「文件明明在那儿但找不到」。
-把数据目录放到 `%USERPROFILE%\ApkStart`（AppData 之外，不参与虚拟化），父子进程看到的
-是同一份真实文件，这一类问题从根上消失。代码见 `src/core/store.js` 的 `STORE_BUILD`。
+Por qué se sacó el directorio de datos de `%APPDATA%`: las aplicaciones full-trust de MSIX redirigen las
+**escrituras** bajo `%APPDATA%` / `%LOCALAPPDATA%` a `%LOCALAPPDATA%\Packages\<nombre-de-familia-del-paquete>\LocalCache\...`, mientras que las variables de entorno y las
+API siguen devolviendo la ruta real previa a la redirección. Nosotros hacemos spawn de `emulator.exe` / `adb.exe` desde el directorio de datos,
+y si el proceso hijo y el padre tienen visiones distintas de esas rutas, aparece el caso de «el archivo está ahí pero no se encuentra».
+Al poner el directorio de datos en `%USERPROFILE%\ApkBuddyStart` (fuera de AppData, sin virtualización), el padre y el hijo ven
+los mismos archivos reales y este tipo de problemas desaparecen de raíz. El código está en `STORE_BUILD` de `src/core/store.js`.
 
 ---
 
-## 2. 怎么打这个包
+## 2. Cómo generar este paquete
 
-### 2.1 三条路，选一条
+### 2.1 Tres caminos; elige uno
 
-**A. 完全离线（推荐，最稳）**
+**A. Completamente sin conexión (recomendado, el más fiable)**
 
 ```powershell
-node build/pack.js      # 产出 dist/ApkStart-win64-portable（壳，约 228 MB）
-node build/msix.js      # 自动把 build/runtime 复制进包，再打 MSIX
+node build/pack.js      # genera dist/ApkBuddyStart-win64-portable (la carcasa, unos 228 MB)
+node build/msix.js      # copia automáticamente build/runtime al paquete y luego crea el MSIX
 ```
 
-`build/msix.js` 会优先用 `dist/ApkStart-win64-portable` 当载荷（不需要联网），
-自己把 `build/runtime` 复制到 `app\resources\runtime` —— 等价于 electron-builder 的
-`extraResources`，但不会去 CDN 拉工具集。如果 `build/runtime` 不存在，先跑
-`node build/prepare-runtime.js`（或 `npm run runtime`）。
+`build/msix.js` prioriza `dist/ApkBuddyStart-win64-portable` como carga útil (sin necesidad de red) y
+copia por su cuenta `build/runtime` a `app\resources\runtime`: equivale a los `extraResources` de electron-builder,
+pero sin ir a buscar el conjunto de herramientas a una CDN. Si `build/runtime` no existe, ejecuta primero
+`node build/prepare-runtime.js` (o `npm run runtime`).
 
-**B. 一条命令（走 electron-builder）**
+**B. Un solo comando (mediante electron-builder)**
 
 ```powershell
 npm run build:appx
 ```
 
-它会跑 `electron-builder --win appx --x64 --config electron-builder.yml`，产出
-`dist/release/ApkStart-<版本>.appx`。⚠️ 这一步会从 CDN 下载 electron-builder 自己的
-工具集，**断网或网络不稳时会只解一半**（`win-unpacked` 里只剩 `electron.exe`，
-`resources/runtime` 没复制），后续打出来的包会缺运行时。遇到这种情况回到 A。
+Esto ejecuta `electron-builder --win appx --x64 --config electron-builder.yml` y genera
+`dist/release/ApkBuddyStart-<versión>.appx`. ⚠️ Este paso descarga el propio conjunto de herramientas de electron-builder desde una CDN,
+y **si no hay red o la conexión es inestable puede extraerse solo a medias** (`win-unpacked` se queda solo con `electron.exe`,
+sin copiar `resources/runtime`), de modo que los paquetes generados después carecerán de la ejecución. En ese caso, vuelve al camino A.
 
-**C. 自己组包(可控性最好)**
+**C. Armar el paquete uno mismo (máximo control)**
 
 ```powershell
 npx electron-builder --win dir --x64 --config electron-builder.yml
 node build/msix.js --payload dist/release/win-unpacked
 
-# 想本地装一下试试，加 --sign（会生成自签证书并签名）
+# si quieres instalarlo localmente para probar, añade --sign (genera un certificado autofirmado y firma)
 node build/msix.js --sign
 ```
 
-产物在 `dist/store/ApkStart_<四段版本>_x64.msix`，脚本最后会用 ZipFile 自检包内是否
-有 `AppxManifest.xml` / `AppxBlockMap.xml` / `[Content_Types].xml`（这三个缺一个都装不上），
-并打印「运行时已内置」确认。
+El resultado está en `dist/store/ApkBuddyStart_<versión-de-cuatro-partes>_x64.msix`. Al final, el script se comprueba a sí mismo con ZipFile
+que el paquete contiene `AppxManifest.xml` / `AppxBlockMap.xml` / `[Content_Types].xml` (si falta cualquiera de los tres, no se puede instalar),
+e imprime la confirmación «ejecución integrada».
 
-### 2.2 需要本机装什么
+### 2.2 Qué hay que tener instalado en la máquina
 
-- Node ≥ 20（已具备）
-- **`makeappx.exe`**：Windows 11 **不自带**。三条找它的路，`build/msix.js` 会依次尝试：
+- Node ≥ 20 (ya disponible)
+- **`makeappx.exe`**: Windows 11 **no lo incluye**. El script `build/msix.js` prueba tres caminos en orden:
   1. `PATH`
-  2. `C:\Program Files (x86)\Windows Kits\10\bin\<版本>\x64\makeappx.exe`
-  3. electron-builder 的缓存目录（只要跑过一次 `--win appx` 就有）
+  2. `C:\Program Files (x86)\Windows Kits\10\bin\<versión>\x64\makeappx.exe`
+  3. El directorio de caché de electron-builder (disponible en cuanto se ha ejecutado `--win appx` una vez)
 
-  想单独装：<https://developer.microsoft.com/windows/downloads/windows-sdk/>
-  （只勾 Windows SDK，不用装 Visual Studio）。
+  Para instalarlo por separado: <https://developer.microsoft.com/windows/downloads/windows-sdk/>
+  (marca solo Windows SDK; no hace falta instalar Visual Studio).
 
-  找不到时脚本会把 stage 目录留在 `dist/store/.stage`，并打印一条可以直接复制执行的
-  `makeappx pack` 命令，不会白跑。
+  Si no lo encuentra, el script deja el directorio de staging en `dist/store/.stage` e imprime un comando
+  `makeappx pack` que se puede copiar y ejecutar directamente, para que el trabajo no se pierda.
 
 ---
 
-## 3. 提交商店前必须改的两个值
+## 3. Dos valores que hay que cambiar antes de enviar a la tienda
 
-MSIX 清单里的 `Identity/@Name` 和 `Identity/@Publisher` 必须**逐字**等于
-Partner Center → **Product management → Product identity** 里给出的
-`Package/Identity/Name` 与 `Package/Identity/Publisher`，差一个字符都收不了。
+`Identity/@Name` e `Identity/@Publisher` en el manifiesto MSIX deben ser **exactamente, carácter por carácter**, iguales a los
+`Package/Identity/Name` y `Package/Identity/Publisher` que muestra Partner Center → **Product management → Product identity**;
+si difiere una sola letra, el paquete se rechaza.
 
-当前默认值（占位用，真上架要换）：
+Valores actuales por defecto (son marcadores de posición; para publicar de verdad hay que cambiarlos):
 
 ```
-Identity Name      = RoutineMiku.ApkStart
+Identity Name      = RoutineMiku.ApkBuddyStart
 Identity Publisher = CN=RoutineMiku
 PublisherDisplayName = RoutineMiku
 ```
 
-三种改法，任选：
+Tres formas de cambiarlos; elige una:
 
 ```powershell
-# 1) 改 electron-builder.yml 的 appx.identityName / appx.publisher
-# 2) 改 build/msix.js 顶部的 IDENTITY / PUBLISHER 默认值
-# 3) 用环境变量或命令行参数覆盖（推荐，不动源码）
-node build/msix.js --identity "12345RoutineMiku.ApkStart" --publisher "CN=1a2b3c4d-1111-2222-3333-444455556666"
-$env:APKSTART_MSIX_IDENTITY="12345RoutineMiku.ApkStart"
+# 1) modificar appx.identityName / appx.publisher en electron-builder.yml
+# 2) modificar los valores por defecto IDENTITY / PUBLISHER al inicio de build/msix.js
+# 3) sobrescribirlos con variables de entorno o parámetros de línea de comandos (recomendado, sin tocar el código)
+node build/msix.js --identity "12345RoutineMiku.ApkBuddyStart" --publisher "CN=1a2b3c4d-1111-2222-3333-444455556666"
+$env:APKSTART_MSIX_IDENTITY="12345RoutineMiku.ApkBuddyStart"
 $env:APKSTART_MSIX_PUBLISHER="CN=1a2b3c4d-1111-2222-3333-444455556666"
 ```
 
 ---
 
-## 4. 本地试装（只是自测，上架不需要）
+## 4. Instalación local de prueba (solo autocomprobación, no hace falta para publicar)
 
-> ⚠️ 本地签名这一步**需要完整的 Windows SDK**。electron-builder 缓存里那份
-> `winCodeSign` 工具集是裁剪过的，它的 `signtool.exe` 签 MSIX 会报
-> `A required function is not present`（缺少 MSIX 的 SIP 提供程序）。
-> 装了 Windows SDK 之后用 `C:\Program Files (x86)\Windows Kits\10\bin\<版本>\x64\signtool.exe`
-> 就没问题。
+> ⚠️ La firma local **requiere el Windows SDK completo**. El conjunto `winCodeSign` de la caché de electron-builder está recortado,
+> y su `signtool.exe` da el error `A required function is not present` al firmar un MSIX (le falta el proveedor SIP de MSIX).
+> Con el Windows SDK instalado, usa `C:\Program Files (x86)\Windows Kits\10\bin\<versión>\x64\signtool.exe`
+> y no hay problema.
 
 ```powershell
-node build/msix.js --sign          # 生成自签证书 + 尝试签名
-# 如果上一步报 signtool 不可用，用 SDK 里的那一份手工签：
+node build/msix.js --sign          # genera un certificado autofirmado e intenta firmar
+# si el paso anterior dice que signtool no está disponible, firma a mano con el del SDK:
 & "C:\Program Files (x86)\Windows Kits\10\bin\10.0.26100.0\x64\signtool.exe" `
-  sign /fd SHA256 /a /f dist\store\ApkStart-test.pfx /p 'ApkStart!test' `
-  dist\store\ApkStart_0.5.8.0_x64.msix
+  sign /fd SHA256 /a /f dist\store\ApkBuddyStart-test.pfx /p 'ApkBuddyStart!test' `
+  dist\store\ApkBuddyStart_0.5.8.0_x64.msix
 
-# 管理员 PowerShell 里信任证书（一次即可）
+# en PowerShell de administrador, confía en el certificado (una sola vez)
 Import-PfxCertificate -CertStoreLocation 'Cert:\LocalMachine\TrustedPeople' `
-  -FilePath 'dist\store\ApkStart-test.pfx' `
-  -Password (ConvertTo-SecureString 'ApkStart!test' -Force -AsPlainText)
-Add-AppxPackage -Path 'dist\store\ApkStart_0.5.8.0_x64.msix'
+  -FilePath 'dist\store\ApkBuddyStart-test.pfx' `
+  -Password (ConvertTo-SecureString 'ApkBuddyStart!test' -Force -AsPlainText)
+Add-AppxPackage -Path 'dist\store\ApkBuddyStart_0.5.8.0_x64.msix'
 ```
 
-卸载：`Get-AppxPackage *ApkStart* | Remove-AppxPackage`
+Desinstalar: `Get-AppxPackage *ApkBuddyStart* | Remove-AppxPackage`
 
-自签证书的 Subject 必须和清单里的 `Publisher` 一致，否则报 `0x800B0109` / `0x80073CF3`。
-
----
-
-## 5. 已知限制（写进 listing，别让用户自己踩）
-
-0. **装完不会再联网下载任何东西**。模拟器、platform-tools、系统镜像全在包里；
-   唯一的一次性动作是「把包内的 `system.img.xz` 就地展开」到
-   `%USERPROFILE%\ApkStart\data\system-images`（约 1 分钟、约 3.3 GB，纯本地解压）。
-   第一次开机动画会写明「运行时组件已随安装包内置，不再下载任何东西」。
-   代码约束：`provision.systemImageInfo()` / `playImageInfo()` 把**压缩镜像也算就位**，
-   `main.js` 的 `autoDeploy()` 在内置运行时下直接跳过联网（见 `bundledRuntimeDir`）。
-1. **整包更新**：MSIX 没有差分下载，每次发版用户都要重下 ~852 MB。
-2. **首次启动要展开镜像**：包里的 `system.img.xz`（472 MB）要展开成 ~3.3 GB，约 1 分钟。
-   展开目标是 `%USERPROFILE%\ApkStart\data\system-images`，不在只读的包目录里。
-   想要「装完 0 等待」可以改成随包分发已展开的镜像，代价是安装包从 852 MB 涨到约 4.4 GB
-   （`build/msix.js` 目前按「小下载 + 一次本地展开」取舍）。
-3. **只有 WHPX 能用**：商店版装不了 AEHD 内核驱动。用户需要在「启用或关闭 Windows 功能」
-   里勾上「虚拟机平台」，否则会掉到 TCG 软件模拟（极慢）。
-4. **不能自更新**：更新由 Store 负责（设置 → 应用 → 更新）。
-5. **安卓数据随包卸载一起删**：数据在 `%USERPROFILE%\ApkStart\data`，卸载 MSIX 不会
-   自动清掉它（这是好事），但「重置应用」会。
+El Subject del certificado autofirmado debe coincidir con el `Publisher` del manifiesto; si no, salta `0x800B0109` / `0x80073CF3`.
 
 ---
 
-## 6. 需要人工完成的部分（脚本替代不了）
+## 5. Limitaciones conocidas (ponlas en el listing para que el usuario no se las encuentre)
 
-1. **注册开发者账号**：<https://storedeveloper.microsoft.com>
-   （老入口 Partner Center 个人账号是一次性 $19；从上面这个新入口走流程据微软文档是免费的，
-   代价是要做证件 + 自拍身份验证。以注册页当时显示的金额为准。）
-2. **预留应用名称** → 拿到 `Package/Identity/Name`、`Package/Identity/Publisher`。
-3. **上传包**：`.msix` / `.appx` / `.msixbundle` 都可以；Win10+ 推荐 `.msixupload`
-   （带符号文件才有崩溃分析），但单 x64 的 `.appx` 直传也是被允许的。
-   Store 接受上限 **25 GB/包**，我们 ~1.3 GB。
-4. **准备 listing**：
-   - 截图 ≥ 1 张（建议 4 张），**1366×768 或更大**，PNG，≤50 MB，最多 10 张
-   - 中文描述（首屏那 3 句话最关键）、分类「实用工具」
-   - 隐私政策 URL（本应用不收集个人数据，但仍建议挂一页说明联网行为）
-5. **年龄分级问卷（IARC）**。
-6. **Notes for certification**（给审核员看的说明）——这一项对本应用**特别重要**，
-   建议照抄下面这段并补上自己的信息：
-
-   > ApkStart 是一个 Android 应用运行器。它内置 Google 官方 Android 模拟器
-   > （qemu-system-x86_64.exe）与一套 AOSP 系统镜像，全部随安装包分发，运行时不下载
-   > 任何可执行内容。用户双击自己的 .apk 文件即可把该 Android 应用以 Windows 窗口形式
-   > 运行。应用不会自行安装任何来自网络的 APK。首次启动会在
-   > %USERPROFILE%\ApkStart\data 下展开约 3.3 GB 的系统镜像（这是模拟器正常工作所必需）。
-   > 硬件加速依赖 Windows 自带 WHPX，不安装任何驱动或服务。
-7. **无法自动化的一点**：Store submission API（Azure AD 认证）可以程序化提交，但一旦
-   用 API 创建了某个 submission，就不能再回 Partner Center 网页改它（会进不可恢复的
-   error 状态）。所以建议「CI 出包 → 网页上传 + 填表 → 提交」，不要一开始就接 API。
+0. **Tras la instalación no se descarga absolutamente nada por red**. El emulador, platform-tools y la imagen del sistema están todos en el paquete;
+   la única acción única es «desplegar en el mismo sitio el `system.img.xz` incluido» en
+   `%USERPROFILE%\ApkBuddyStart\data\system-images` (unos 1 minuto y unos 3,3 GB, solo descompresión local).
+   La animación del primer arranque indicará que «los componentes de ejecución se incluyen en el instalador y no se descarga nada».
+   Restricción en el código: `provision.systemImageInfo()` / `playImageInfo()` cuentan también la imagen comprimida como «lista»,
+   y `autoDeploy()` en `main.js` omite directamente la red con la ejecución integrada (véase `bundledRuntimeDir`).
+1. **Actualización del paquete completo**: MSIX no tiene descarga incremental, así que en cada versión el usuario vuelve a bajar ~852 MB.
+2. **El primer inicio debe desplegar la imagen**: el `system.img.xz` del paquete (472 MB) se expande a ~3,3 GB, unos 1 minuto.
+   El destino es `%USERPROFILE%\ApkBuddyStart\data\system-images`, no el directorio del paquete en solo lectura.
+   Para lograr «cero espera al instalar» se podría distribuir la imagen ya desplegada, a costa de que el instalador pase de 852 MB a unos 4,4 GB
+   (`build/msix.js` opta actualmente por «descarga pequeña + una descompresión local»).
+3. **Solo funciona WHPX**: la versión de tienda no puede instalar el controlador de kernel AEHD. El usuario debe marcar «Plataforma de máquina virtual»
+   en «Activar o desactivar las características de Windows»; si no, se cae a emulación por software TCG (muy lenta).
+4. **Sin actualización automática**: las actualizaciones las gestiona Store (Ajustes → Aplicaciones → Actualizaciones).
+5. **Los datos de Android se borran al desinstalar el paquete**: los datos están en `%USERPROFILE%\ApkBuddyStart\data`; desinstalar el MSIX no los
+   elimina automáticamente (lo cual es bueno), pero «Restablecer la aplicación» sí lo hace.
 
 ---
 
-## 7. 相关代码位置
+## 6. Partes que hay que hacer a mano (los scripts no las sustituyen)
 
-| 文件 | 作用 |
+1. **Registrar una cuenta de desarrollador**: <https://storedeveloper.microsoft.com>
+   (la entrada antigua de Partner Center para cuentas personales costaba 19 $ una vez; según la documentación de Microsoft, el nuevo proceso de arriba es gratuito,
+   a costa de verificar la identidad con documento y selfie. Confía siempre en el importe que muestre la página de registro en ese momento.)
+2. **Reservar el nombre de la aplicación** → obtén `Package/Identity/Name` y `Package/Identity/Publisher`.
+3. **Subir el paquete**: se aceptan `.msix` / `.appx` / `.msixbundle`; en Win10+ se recomienda `.msixupload`
+   (con archivos de símbolos para el análisis de fallos), pero también se permite subir directamente un `.appx` x64 suelto.
+   Store acepta hasta **25 GB por paquete**; el nuestro es de ~1,3 GB.
+4. **Preparar el listing**:
+   - Al menos 1 captura (se recomiendan 4), de **1366×768 o superior**, en PNG, ≤50 MB, máximo 10
+   - Descripción en español (las 3 primeras frases son las más importantes), categoría «Utilidades»
+   - URL de la política de privacidad (esta aplicación no recopila datos personales, pero se recomienda publicar una página que explique el comportamiento de red)
+5. **Cuestionario de clasificación por edades (IARC)**.
+6. **Notes for certification** (explicación para el revisor): este apartado es **especialmente importante** para esta aplicación;
+   te conviene copiar el texto siguiente y añadir tus propios datos:
+
+   > ApkBuddyStart es un ejecutor de aplicaciones Android. Incluye el emulador oficial de Android de Google
+   > (qemu-system-x86_64.exe) y un juego de imágenes de sistema AOSP, todos distribuidos con el instalador; en tiempo de ejecución no se descarga
+   > ningún contenido ejecutable. El usuario hace doble clic en su propio archivo .apk para ejecutar esa aplicación Android como una ventana de Windows.
+   > La aplicación no instala por su cuenta ningún APK procedente de la red. En el primer inicio despliega unos 3,3 GB de imagen del sistema en
+   > %USERPROFILE%\ApkBuddyStart\data (necesario para que el emulador funcione).
+   > La aceleración por hardware depende del WHPX incluido en Windows; no se instala ningún controlador ni servicio.
+7. **Un punto que no se puede automatizar**: la Store submission API (autenticación Azure AD) permite enviar mediante programa, pero una vez
+   creado un submission con la API ya no se puede volver a editar desde la web de Partner Center (entra en un estado de error irrecuperable).
+   Por eso se recomienda «CI genera el paquete → subir y rellenar el formulario en la web → enviar», en lugar de conectar la API desde el principio.
+
+---
+
+## 7. Ubicaciones de código relacionadas
+
+| Archivo | Función |
 |---|---|
-| `build/msix.js` | 组 stage、生成 5 张商店图标、写 `AppxManifest.xml`、调 `makeappx`、可选自签 |
-| `electron-builder.yml` | `appx` 段落（identity / publisher / capabilities / 语言 / 最低系统版本） |
-| `src/core/store.js` | `STORE_BUILD` 检测（`process.windowsStore`）与数据目录改道 |
-| `src/core/provision.js` | 只读运行时目录处理：可执行文件留在包内，可写数据改道 |
-| `src/main.js` | 商店版关掉自更新、AEHD 改提示开 WHPX |
+| `build/msix.js` | Prepara el stage, genera las 5 iconos de tienda, escribe `AppxManifest.xml`, llama a `makeappx` y firma de forma opcional |
+| `electron-builder.yml` | Sección `appx` (identity / publisher / capabilities / idiomas / versión mínima del sistema) |
+| `src/core/store.js` | Detección de `STORE_BUILD` (`process.windowsStore`) y redirección del directorio de datos |
+| `src/core/provision.js` | Gestión del directorio de ejecución en solo lectura: los ejecutables se quedan en el paquete y los datos escribibles se redirigen |
+| `src/main.js` | Desactiva la actualización automática en la versión de tienda y cambia el aviso de AEHD por el de activar WHPX |

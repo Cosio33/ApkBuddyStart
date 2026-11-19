@@ -2,7 +2,7 @@
 /**
  * 后端适配层（backend driver）—— 把「安卓从哪来」这件事从 Runtime 里抽出来。
  *
- * 背景：ApkStart 原本只有一个底座（自带 Google Android Emulator / QEMU），
+ * 背景：ApkBuddyStart 原本只有一个底座（自带 Google Android Emulator / QEMU），
  * 引擎的生命周期（开机、快照、空闲回收、镜像下载）全部写死在 core/engine.js 里。
  * 但「双击 APK 装好、双击图标打开、每个应用一个干净窗口」这部分体验，
  * 对底座其实只有三个要求：
@@ -162,7 +162,7 @@ class Backend {
   // eslint-disable-next-line class-methods-use-this
   async resetData() { return { ok: false, error: 'Este backend no admite restablecer los datos' }; }
 
-  /** 释放资源（ApkStart 退出时调用；默认什么都不做） */
+  /** 释放资源（ApkBuddyStart 退出时调用；默认什么都不做） */
   // eslint-disable-next-line class-methods-use-this
   dispose() {}
 

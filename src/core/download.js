@@ -10,7 +10,7 @@ const https = require('https');
 const crypto = require('crypto');
 const { URL } = require('url');
 
-const UA = 'ApkStart/0.2 (Windows; +https://github.com/apkstart)';
+const UA = 'ApkBuddyStart/0.2 (Windows; +https://github.com/apkstart)';
 
 /**
  * 校验服务器返回的 Content-Range 是否与本次请求一致。
