@@ -42,16 +42,19 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
-          $url = "https://github.com/erkamyaman/rust-anything/releases/download/v${env:RA_VERSION}/rust-anything-v${env:RA_VERSION}-x86_64-pc-windows-msvc.zip"
+          $asset = "rust-anything-v${env:RA_VERSION}-x86_64-pc-windows-msvc.zip"
+          $url = "https://github.com/erkamyaman/rust-anything/releases/download/v${env:RA_VERSION}/$asset"
+          Write-Host "Descargando $url"
           Invoke-WebRequest -Uri $url -OutFile ra.zip
           Expand-Archive -Path ra.zip -DestinationPath ra-bin -Force
           $bin = Get-ChildItem -Path ra-bin -Recurse -Filter rust-anything.exe | Select-Object -First 1
-          if (-not $bin) { throw "rust-anything.exe not found in release archive" }
+          if (-not $bin) { throw "rust-anything.exe no encontrado en el archivo" }
           $dir = Join-Path $env:RUNNER_TEMP 'ra'
           New-Item -ItemType Directory -Force -Path $dir | Out-Null
           Copy-Item $bin.FullName (Join-Path $dir 'rust-anything.exe') -Force
-          echo "$dir" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
-          rust-anything --version
+          Add-Content -Path $env:GITHUB_PATH -Value $dir -Encoding ascii
+          Write-Host "PATH anadido: $dir"
+          & (Join-Path $dir 'rust-anything.exe') --version
 
       - name: Setup Node (runtime del original)
         uses: actions/setup-node@v4
