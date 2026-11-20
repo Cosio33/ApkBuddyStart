@@ -108,9 +108,8 @@ jobs:
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: rust-port-${{ matrix.crate }}
+          name: rust-port-${{ strategy.job-index }}
           path: |
-            rust/*/target/**/*.node
-            rust/*/*.node
-            rust/*/cases.jsonl
+            rust/backends-rs/cases.jsonl
+            rust/backends-rs/backends_rs.node
           if-no-files-found: ignore
