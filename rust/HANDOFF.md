@@ -10,6 +10,9 @@ Actualizado: 2026-11-20. Sesión: rama `rust-port` desde `branding/full-spanish`
 - Diff: 50/50. Bench: 0.02x — **no enviar esta unidad por velocidad** (ADR-005).
 - Fallback: 100 % (toda la app sigue en JS; el crate Rust aún no está cableado a la app).
 - CI: `.github/workflows/rust-port.yml` compila y verifica en `windows-latest`.
+- Último run en GitHub: https://github.com/Cosio33/ApkBuddyStart/actions/runs/44774227947
+  (success: install → record → build → diff 50/50 → bench → gate → upload).
+- Commit de la rama: `d400c3d`.
 
 ## Cómo continuar
 
