@@ -1,0 +1,99 @@
+{
+  "schema": "rust-anything/bridge@1",
+  "root": "C:\\Users\\Gael\\WorkBuddy AI\\2026-11-17-09-36-27\\apkbuddy",
+  "unit": "rust/",
+  "language": "ts",
+  "kind": "napi",
+  "crate_name": "backends-rs",
+  "exports": [
+    {
+      "name": "hasBackend",
+      "file": "rust/backends-api.mjs",
+      "line": 17,
+      "params": [
+        {
+          "name": "id",
+          "ts_type": "unknown",
+          "optional": false,
+          "rest": false
+        }
+      ],
+      "returns": "unknown",
+      "is_async": false,
+      "is_generator": false,
+      "type_params": [],
+      "uses_instanceof": false
+    },
+    {
+      "name": "backendId",
+      "file": "rust/backends-api.mjs",
+      "line": 22,
+      "params": [
+        {
+          "name": "id",
+          "ts_type": "unknown",
+          "optional": false,
+          "rest": false
+        }
+      ],
+      "returns": "unknown",
+      "is_async": false,
+      "is_generator": false,
+      "type_params": [],
+      "uses_instanceof": false
+    },
+    {
+      "name": "describeBackends",
+      "file": "rust/backends-api.mjs",
+      "line": 28,
+      "params": [],
+      "returns": "unknown",
+      "is_async": false,
+      "is_generator": false,
+      "type_params": [],
+      "uses_instanceof": false
+    },
+    {
+      "name": "autoPickBackend",
+      "file": "rust/backends-api.mjs",
+      "line": 33,
+      "params": [],
+      "returns": "unknown",
+      "is_async": true,
+      "is_generator": false,
+      "type_params": [],
+      "uses_instanceof": false
+    },
+    {
+      "name": "onlyBackend",
+      "file": "rust/backends-api.mjs",
+      "line": 38,
+      "params": [],
+      "returns": "unknown",
+      "is_async": false,
+      "is_generator": false,
+      "type_params": [],
+      "uses_instanceof": false
+    },
+    {
+      "name": "backendCaps",
+      "file": "rust/backends-api.mjs",
+      "line": 43,
+      "params": [
+        {
+          "name": "id",
+          "ts_type": "unknown",
+          "optional": false,
+          "rest": false
+        }
+      ],
+      "returns": "unknown",
+      "is_async": false,
+      "is_generator": false,
+      "type_params": [],
+      "uses_instanceof": false
+    }
+  ],
+  "classes": [],
+  "js_only": []
+}

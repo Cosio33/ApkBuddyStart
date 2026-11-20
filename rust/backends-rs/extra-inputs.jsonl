@@ -1,0 +1,11 @@
+{"fn":"hasBackend","args":["builtin"]}
+{"fn":"hasBackend","args":["BUILTIN"]}
+{"fn":"hasBackend","args":[""]}
+{"fn":"hasBackend","args":["mumu"]}
+{"fn":"backendId","args":["builtin"]}
+{"fn":"backendId","args":["BUILTIN"]}
+{"fn":"backendId","args":[""]}
+{"fn":"backendCaps","args":["builtin"]}
+{"fn":"backendCaps","args":["BUILTIN"]}
+{"fn":"backendCaps","args":[""]}
+{"fn":"onlyBackend","args":[]}
